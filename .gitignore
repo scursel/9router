@@ -1,0 +1,17 @@
+.env
+.env.*
+*.cookie
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.secret
+*.token
+auth/
+backups/
+node_modules/
+quota-tracker-originals/
+runtime/
+coverage/
+*.log
+*~

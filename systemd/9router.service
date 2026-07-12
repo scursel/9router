@@ -1,0 +1,15 @@
+[Unit]
+Description=9Router - AI Router with Smart Fallback
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.hermes/profiles/zen/scripts/start-9router.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
