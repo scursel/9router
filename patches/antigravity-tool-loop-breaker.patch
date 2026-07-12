@@ -1,0 +1,254 @@
+diff --git a/open-sse/config/appConstants.js b/open-sse/config/appConstants.js
+index cc46697..d4393b2 100644
+--- a/open-sse/config/appConstants.js
++++ b/open-sse/config/appConstants.js
+@@ -72,6 +72,14 @@ export const CLIENT_METADATA = {
+ // Internal anti-loop header
+ export const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
+ 
++// Stop provider-side tool loops after the same semantic call has been made
++// this many consecutive times. Tool call ids and JSON object key order are
++// intentionally ignored by the detector.
++export const TOOL_LOOP_BREAKER_THRESHOLD = 3;
++export const TOOL_LOOP_BREAKER_MESSAGE =
++  "Tool loop circuit breaker: do not emit another functionCall. " +
++  "Use the tool results already present in the conversation and respond with a final text answer now.";
++
+ // Suffix added to client tools when forwarding to Antigravity provider (anti-ban cloaking)
+ export const AG_TOOL_SUFFIX = "_ide";
+ 
+diff --git a/open-sse/handlers/chatCore.js b/open-sse/handlers/chatCore.js
+index e72235f..1ba76ea 100644
+--- a/open-sse/handlers/chatCore.js
++++ b/open-sse/handlers/chatCore.js
+@@ -2,6 +2,7 @@ import { detectFormat, getTargetFormat, resolveTransport } from "../services/pro
+ import { translateRequest } from "../translator/index.js";
+ import { stripThinkingSuffix } from "../translator/concerns/thinkingUnified.js";
+ import { FORMATS } from "../translator/formats.js";
++import { GEMINI_ROLE } from "../translator/schema/index.js";
+ import { normalizeClaudePassthrough } from "../translator/formats/claude.js";
+ import { createStreamController } from "../utils/streamHandler.js";
+ import { refreshWithRetry } from "../services/tokenRefresh.js";
+@@ -29,6 +30,11 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
+ import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
+ import { extractThinking } from "../translator/concerns/thinkingUnified.js";
+ import { resolveSessionId } from "../utils/sessionManager.js";
++import { hasRepeatedTrailingToolCalls } from "../translator/concerns/toolCall.js";
++import {
++  TOOL_LOOP_BREAKER_MESSAGE,
++  TOOL_LOOP_BREAKER_THRESHOLD,
++} from "../config/appConstants.js";
+ 
+ /**
+  * Core chat handler - shared between SSE and Worker
+@@ -149,6 +155,33 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
+     translatedBody.model = stripThinkingSuffix(upstreamModel);
+   }
+ 
++  // Antigravity/Gemini can keep emitting the same tool call even after the
++  // client has returned identical no-progress results. The request translator
++  // marks the turn as NONE, but the provider executor may rebuild toolConfig.
++  // Enforce the circuit breaker at the final dispatch boundary by removing
++  // declarations for exactly one turn. The full history remains intact, so
++  // the model can summarize the accumulated tool results as text.
++  if (
++    provider === FORMATS.ANTIGRAVITY
++    && hasRepeatedTrailingToolCalls(body, TOOL_LOOP_BREAKER_THRESHOLD)
++  ) {
++    const outbound = translatedBody.request || translatedBody;
++    delete outbound.tools;
++    delete outbound.toolConfig;
++    const nudge = { text: TOOL_LOOP_BREAKER_MESSAGE };
++    const lastContent = Array.isArray(outbound.contents) ? outbound.contents.at(-1) : null;
++    if (lastContent?.role === GEMINI_ROLE.USER && Array.isArray(lastContent.parts)) {
++      lastContent.parts.push(nudge);
++    } else {
++      outbound.contents ??= [];
++      outbound.contents.push({ role: GEMINI_ROLE.USER, parts: [nudge] });
++    }
++    log?.warn?.(
++      "TOOL_LOOP",
++      `removed tool declarations after ${TOOL_LOOP_BREAKER_THRESHOLD} identical consecutive calls`
++    );
++  }
++
+   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
+   if (clientTool === "claude" && Array.isArray(translatedBody.tools)) {
+     const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
+diff --git a/open-sse/translator/concerns/toolCall.js b/open-sse/translator/concerns/toolCall.js
+index 8de82f7..0bb94c2 100644
+--- a/open-sse/translator/concerns/toolCall.js
++++ b/open-sse/translator/concerns/toolCall.js
+@@ -3,6 +3,61 @@
+ // Anthropic tool_use.id must match: ^[a-zA-Z0-9_-]+$
+ const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+ 
++function canonicalize(value) {
++  if (Array.isArray(value)) return value.map(canonicalize);
++  if (value && typeof value === "object") {
++    return Object.fromEntries(
++      Object.keys(value).sort().map((key) => [key, canonicalize(value[key])])
++    );
++  }
++  return value;
++}
++
++function canonicalToolCallSignature(toolCalls) {
++  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
++  const calls = [];
++  for (const call of toolCalls) {
++    const name = call?.function?.name;
++    if (!name) return null;
++    let args = call.function.arguments ?? {};
++    if (typeof args === "string") {
++      try {
++        args = JSON.parse(args || "{}");
++      } catch {
++        args = args.trim();
++      }
++    }
++    calls.push({ name, arguments: canonicalize(args) });
++  }
++  return JSON.stringify(calls);
++}
++
++// Detect a trailing run of identical OpenAI assistant tool-call turns. Tool
++// result messages between assistant turns are ignored, while any ordinary
++// user/assistant turn ends the run. This is intentionally request-only: the
++// router does not retain cross-request conversation state.
++export function hasRepeatedTrailingToolCalls(body, threshold = 3) {
++  if (!Array.isArray(body?.messages) || threshold < 2) return false;
++
++  let expected = null;
++  let repeats = 0;
++  for (let i = body.messages.length - 1; i >= 0; i--) {
++    const msg = body.messages[i];
++    if (msg?.role === "tool" || msg?.role === "function") continue;
++    if (msg?.role !== "assistant" || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
++      break;
++    }
++
++    const signature = canonicalToolCallSignature(msg.tool_calls);
++    if (!signature) break;
++    if (expected === null) expected = signature;
++    if (signature !== expected) break;
++    repeats += 1;
++    if (repeats >= threshold) return true;
++  }
++  return false;
++}
++
+ // Fallback streaming tool_call id when provider omits one (index optional)
+ export function fallbackToolCallId(index) {
+   return index === undefined ? `call_${Date.now()}` : `call_${index}_${Date.now()}`;
+@@ -150,4 +205,3 @@ export function fixMissingToolResponses(body) {
+   body.messages = newMessages;
+   return body;
+ }
+-
+diff --git a/open-sse/translator/request/openai-to-gemini.js b/open-sse/translator/request/openai-to-gemini.js
+index 9e029e2..466c50d 100644
+--- a/open-sse/translator/request/openai-to-gemini.js
++++ b/open-sse/translator/request/openai-to-gemini.js
+@@ -18,6 +18,8 @@ import {
+ } from "../formats/gemini.js";
+ import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.js";
+ import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
++import { hasRepeatedTrailingToolCalls } from "../concerns/toolCall.js";
++import { TOOL_LOOP_BREAKER_THRESHOLD } from "../../config/appConstants.js";
+ 
+ // Sanitize function names for Gemini API.
+ // Gemini requires: starts with [a-zA-Z_], followed by [a-zA-Z0-9_.:\-], max 64 chars.
+@@ -427,13 +429,22 @@ function isClaudeModel(model) {
+ 
+ // OpenAI -> Antigravity (Sandbox Cloud Code with wrapper)
+ export function openaiToAntigravityRequest(model, body, stream, credentials = null) {
++  const breakToolLoop = hasRepeatedTrailingToolCalls(body, TOOL_LOOP_BREAKER_THRESHOLD);
+   if (isClaudeModel(model)) {
+     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
+-    return wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
++    const envelope = wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
++    if (breakToolLoop && envelope.request.toolConfig) {
++      envelope.request.toolConfig.functionCallingConfig.mode = "NONE";
++    }
++    return envelope;
+   }
+ 
+   const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
+-  return wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
++  const envelope = wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
++  if (breakToolLoop && envelope.request.toolConfig) {
++    envelope.request.toolConfig.functionCallingConfig.mode = "NONE";
++  }
++  return envelope;
+ }
+ 
+ // Register
+diff --git a/tests/translator/bugs-antigravity.test.js b/tests/translator/bugs-antigravity.test.js
+index 6ab37ef..d2cb887 100644
+--- a/tests/translator/bugs-antigravity.test.js
++++ b/tests/translator/bugs-antigravity.test.js
+@@ -82,6 +82,61 @@ describe("Antigravity → Claude", () => {
+ });
+ 
+ describe("Antigravity executor", () => {
++  it("forces a text turn after repeated semantically identical tool calls", () => {
++    const messages = [{ role: "user", content: "Find the symbol and explain it." }];
++    for (let i = 0; i < 3; i++) {
++      messages.push({
++        role: "assistant",
++        content: null,
++        tool_calls: [{
++          id: `call_${i}`,
++          type: "function",
++          function: {
++            name: "search_files",
++            // Alternate key order to mirror real agent loops.
++            arguments: i % 2 === 0
++              ? '{"path":"/repo","pattern":"needle"}'
++              : '{"pattern":"needle","path":"/repo"}',
++          },
++        }],
++      });
++      messages.push({
++        role: "tool",
++        tool_call_id: `call_${i}`,
++        content: i === 2 ? "BLOCKED: identical search made no progress" : "no matches",
++      });
++    }
++
++    const out = openaiToAntigravityRequest("gemini-3-flash-agent", {
++      messages,
++      tools: [{
++        type: "function",
++        function: {
++          name: "search_files",
++          description: "Search files",
++          parameters: { type: "object", properties: {} },
++        },
++      }],
++    }, true, { projectId: "project-1", connectionId: "conn-1" });
++
++    expect(out.request.toolConfig).toEqual({ functionCallingConfig: { mode: "NONE" } });
++  });
++
++  it("keeps tools validated when repeated calls have not reached the threshold", () => {
++    const out = openaiToAntigravityRequest("gemini-3-flash-agent", {
++      messages: [
++        { role: "user", content: "Find the symbol." },
++        { role: "assistant", tool_calls: [{ id: "c1", type: "function", function: { name: "search_files", arguments: '{"pattern":"x"}' } }] },
++        { role: "tool", tool_call_id: "c1", content: "no matches" },
++        { role: "assistant", tool_calls: [{ id: "c2", type: "function", function: { name: "search_files", arguments: '{"pattern":"x"}' } }] },
++        { role: "tool", tool_call_id: "c2", content: "no matches" },
++      ],
++      tools: [{ type: "function", function: { name: "search_files", parameters: { type: "object", properties: {} } } }],
++    }, true, { projectId: "project-1", connectionId: "conn-1" });
++
++    expect(out.request.toolConfig).toEqual({ functionCallingConfig: { mode: "VALIDATED" } });
++  });
++
+   it("strips optional from nested tool schemas", () => {
+     const out = new AntigravityExecutor().transformRequest("gemini-2.5-pro", {
+       request: {
+
+

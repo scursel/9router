@@ -1,5 +1,9 @@
 # 9Router Quota Tracker Patch
 
+For the separately built Antigravity tool-loop circuit breaker, see
+[`tool-loop-breaker.md`](tool-loop-breaker.md). The quota overlay remains
+hash-pinned and fails cleanly on custom source builds whose chunk hashes differ.
+
 Local compatibility patch tested with 9Router `0.5.30`.
 
 ## Providers

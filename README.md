@@ -1,7 +1,8 @@
 # 9Router Enhanced
 
 Private compatibility overlay for 9Router with additional quota and balance
-collectors, financial formatting, and update-safe startup recovery.
+collectors, financial formatting, update-safe startup recovery, and an
+Antigravity tool-loop circuit breaker for agent clients such as Hermes.
 
 This repository does not contain the 9Router npm package, compiled upstream
 bundles, account databases, API keys, OAuth tokens, or browser cookies.
@@ -17,6 +18,20 @@ bundles, account databases, API keys, OAuth tokens, or browser cookies.
 
 USD values are rendered as currency. Renewal dates and rolling reset times are
 preserved when the provider exposes them.
+
+## Antigravity tool-loop breaker
+
+The source patch at
+[`patches/antigravity-tool-loop-breaker.patch`](patches/antigravity-tool-loop-breaker.patch)
+detects three consecutive tool calls with the same function name and
+canonically equivalent JSON arguments. On the next Antigravity turn it removes
+tool declarations and appends a final-text instruction beside the latest
+`functionResponse`.
+
+This prevents Gemini from repeating a no-progress tool call indefinitely while
+leaving normal tool-call/result/final-answer flows unchanged. See
+[`docs/tool-loop-breaker.md`](docs/tool-loop-breaker.md) for reproduction,
+build, deployment, and rollback details.
 
 ## Compatibility
 
