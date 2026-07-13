@@ -16,10 +16,10 @@ const USAGE_CHUNK = path.join(SERVER_ROOT, USAGE_RELATIVE);
 const UI_RELATIVES = new Set([
   "app/(dashboard)/dashboard/quota/page.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-5dcceb20e5aa06cf.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-870b92d68d6da60f.js",
 ]);
-const ORIGINALS_DIR = path.join(__dirname, "quota-tracker-originals/0.5.30");
 const SUPPORTED_VERSION = "0.5.30";
-const CATALOG_HASHES = {
+const UPSTREAM_CATALOG_HASHES = {
   "app/api/models/route.js": "7e150ccf2352d9457a204e87c89065a8ad81c9a3bdae1647ef6dbfab1efd9fc7",
   "app/api/provider-nodes/route.js": "a6f1767762b0b03f3a43b38c04eb9ab11fa60bf62fe9a5ac0be3b7cf8a36e1a2",
   "app/api/providers/client/route.js": "6468c375a2f7003d0798deb629394a0c8d25aae252ea35733b17842ca0c17ce7",
@@ -42,6 +42,43 @@ const CATALOG_HASHES = {
   "app/(dashboard)/dashboard/quota/page.js": "6e27a6c77cb844c6b12831cc80d84f498f60625d431453a7e2627583d76cf464",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-5dcceb20e5aa06cf.js": "6642239fe1e35258bab004b81078bed2dbb5f9accd4a25562d4e1194b1c62145",
 };
+const ENHANCED_CATALOG_HASHES = {
+  "app/api/models/route.js": "97fb8c3bcd08fb67b650b751161f06a8bdebe837b6c514a5e7f1b610faa55c64",
+  "app/api/provider-nodes/route.js": "430101d0720ce74f4521855d788bdcbe912a90e5aaf6c853513b2c14a34a8303",
+  "app/api/providers/client/route.js": "6ac91d804cc5c716e53053d992ccf084fa1a1873f83e72acd5ce0b5b067a37a0",
+  "app/api/providers/route.js": "ddf74e29f86e6ea0ff52b31cfe10975bca3f8bc1f201a7c293a0208ee68f0a85",
+  "app/api/providers/validate/route.js": "0c1ba8803790d3888b180a51808270c295aab194c9636aaa5484ff545cde9073",
+  "app/api/translator/console-logs/route.js": "76c9ab70d0b2a9e722682e2610f3bacfc657f7e1d9f90f4154707b13f8e0489e",
+  "app/api/translator/console-logs/stream/route.js": "1df03c5c78912375400c35d90e37761b6b9d43384cdaaf35bfdfeb8d8d978bf5",
+  "app/api/usage/providers/route.js": "396c894170f1ab5cc25f57bdc5041597c79f9b102a0c7d058b1596ed99161000",
+  "app/api/v1/audio/speech/route.js": "a8c2160ab02da87bfdc8a08d6a579377ac8a348b88cdda9618defd9348f74448",
+  "app/api/v1/audio/transcriptions/route.js": "e252ecb27d8f893f3ca96746f2c60268e0653615e78c2e967b4987994fe58c5b",
+  "app/api/v1/models/info/route.js": "dae61a998aebdc42617cb18d7b0ff41fa0be2dac8424ab857dd67be2e16d93d6",
+  "app/api/v1beta/models/route.js": "ae0a07ca97805dcb2be131623ed4c5a06b928ec2bb713feba7fbbb60f2369a07",
+  "chunks/2231.js": "916890f40b9425d97cbd23c57f0676173ea87d5856234215431ee189ac89e204",
+  "chunks/4746.js": "f20ad225e895a64ef51ac4be0f4442092e4a646c71f9a87c7e1e0a94b6ec3f13",
+  "chunks/4827.js": "25e1cd6afb3dd217f9956a29e0d2c61ccc76254fc2eb1b79eb43aac2dcb8c5aa",
+  "chunks/615.js": "d7efe526cd81539c92f9743c7745714dad24b4842cea7f731ccc4663a7de5b64",
+  "chunks/8238.js": "37efbbd68e12d887e725522d9abf863217c50c13ec66428461ffdb8be32d29e5",
+  "chunks/8271.js": "7770c89fec19cc45b1a2d8f7bf400f69da212f0b7c12d083936d972051bcd8a8",
+  "chunks/9630.js": "3d1db13f60b81ceeb60cb2e4e2523471c87dbadb084d6d09ba9a9017ead6384b",
+  "app/(dashboard)/dashboard/quota/page.js": "28398ce4513f781f8603e2d8df8453375a45b500e5a0370777c5302c6b05882d",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-870b92d68d6da60f.js": "4277a9a97a6fbc905e8bf7db774699da92aa23318cdb9dbc92856bda5423b77b",
+};
+const ENHANCED_UI_RELATIVE =
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-870b92d68d6da60f.js";
+const CATALOG_VARIANT = fs.existsSync(path.join(SERVER_ROOT, ENHANCED_UI_RELATIVE))
+  ? "enhanced"
+  : "upstream";
+const CATALOG_HASHES = CATALOG_VARIANT === "enhanced"
+  ? ENHANCED_CATALOG_HASHES
+  : UPSTREAM_CATALOG_HASHES;
+const ORIGINALS_DIR = path.join(
+  __dirname,
+  CATALOG_VARIANT === "enhanced"
+    ? "quota-tracker-originals/0.5.30-enhanced"
+    : "quota-tracker-originals/0.5.30",
+);
 const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";

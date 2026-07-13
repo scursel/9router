@@ -23,10 +23,11 @@ preserved when the provider exposes them.
 
 The source patch at
 [`patches/antigravity-tool-loop-breaker.patch`](patches/antigravity-tool-loop-breaker.patch)
-detects three consecutive tool calls with the same function name and
-canonically equivalent JSON arguments. On the next Antigravity turn it removes
-tool declarations and appends a final-text instruction beside the latest
-`functionResponse`.
+detects three tool calls with the same function name and canonically equivalent
+JSON arguments across trailing turns or parallel response batches. It caps a
+single Antigravity response at three identical calls; on the next turn it
+removes tool declarations and appends a final-text instruction beside the
+latest `functionResponse`.
 
 This prevents Gemini from repeating a no-progress tool call indefinitely while
 leaving normal tool-call/result/final-answer flows unchanged. See

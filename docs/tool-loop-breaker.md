@@ -15,14 +15,16 @@ function declarations.
 
 ## Fix
 
-The patch implements a request-local circuit breaker:
+The patch implements a streaming and request-local circuit breaker:
 
 1. Canonicalize tool arguments recursively so JSON object key order does not
    affect equality.
-2. Detect three identical consecutive assistant tool-call turns, ignoring the
-   tool-result messages between them.
-3. On the next Antigravity dispatch, remove `tools` and `toolConfig`.
-4. Add an explicit final-text instruction to the latest Gemini user content,
+2. Limit one streamed Antigravity response to three semantically identical
+   calls while preserving parallel calls with different arguments.
+3. Aggregate identical calls across trailing assistant batches even when the
+   batches contain different numbers of calls, ignoring tool-result messages.
+4. On the next Antigravity dispatch, remove `tools` and `toolConfig`.
+5. Add an explicit final-text instruction to the latest Gemini user content,
    beside the last `functionResponse`.
 
 The breaker affects only the escape turn. It does not retain server-side
@@ -40,7 +42,7 @@ git checkout 9845a1702f7766607bd7ac3315d1f87e59e45fb5
 git apply /path/to/9router-enhanced/patches/antigravity-tool-loop-breaker.patch
 
 npm install --ignore-scripts
-npm install --no-save esbuild
+npm install --no-save --package-lock=false --force next@16.2.1 esbuild
 npm install --prefix tests
 ./tests/node_modules/.bin/vitest run \
   --config tests/vitest.config.js \
@@ -74,6 +76,12 @@ step 3: finish_reason=tool_calls, tool=search_files
 step 4: finish_reason=stop, tool=none
 ```
 
+Forced parallel-loop test through Hermes before the second iteration executed
+10 searches across four API calls. After response-batch filtering and
+cross-batch aggregation, session `20260713_002213_67271d` executed exactly
+three identical `search_files` calls in its first API response; its second API
+response stopped with final text and no fourth tool execution.
+
 Normal-flow regression check:
 
 ```text
@@ -81,7 +89,8 @@ add(20, 22) -> tool_calls
 tool result 42 -> finish_reason=stop, content=42
 ```
 
-Focused translator tests pass 9/9. The wider translator suite on upstream
+Focused translator tests pass 12/12; the related streaming and thinking suite
+passes 54/54 across three files. The wider translator suite on upstream
 0.5.30 has unrelated pre-existing/environment-sensitive snapshot failures;
 those are not changed by this patch.
 
@@ -94,7 +103,7 @@ committed because it contains runtime package and database material.
 
 ## Quota overlay compatibility
 
-The quota overlay is hash-pinned to upstream compiled bundles. A custom source
-rebuild changes Next.js chunk hashes, so the quota startup guard intentionally
-falls back to clean upstream bundles until the catalog is regenerated for that
-build. This does not affect the API router or Antigravity requests.
+The quota overlay is hash-pinned to both the clean upstream 0.5.30 bundle and
+the enhanced 0.5.30 build produced with Next.js 16.2.1. The enhanced catalog
+was regenerated after the circuit-breaker build and validates all 21 target
+bundles. Unknown builds still fail closed and start without modifying bundles.

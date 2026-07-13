@@ -2,7 +2,8 @@
 
 For the separately built Antigravity tool-loop circuit breaker, see
 [`tool-loop-breaker.md`](tool-loop-breaker.md). The quota overlay remains
-hash-pinned and fails cleanly on custom source builds whose chunk hashes differ.
+hash-pinned for both clean upstream 0.5.30 and the enhanced 0.5.30 circuit-
+breaker build. Other source builds fail cleanly when their chunk hashes differ.
 
 Local compatibility patch tested with 9Router `0.5.30`.
 
@@ -43,7 +44,8 @@ quarantine is automatically cleared when a different 9Router version appears.
 Version-change backups are stored below `~/.9router/db/backups/pre-update-*`.
 
 Original bundles used for rollback are stored in
-`~/.9router/quota-tracker-originals/0.5.30/`.
+`~/.9router/quota-tracker-originals/0.5.30/` for upstream and
+`~/.9router/quota-tracker-originals/0.5.30-enhanced/` for the enhanced build.
 
 The pre-fix operational backup, including the SQLite database, systemd unit,
 startup script, bundles, patchers, and checksums, is stored in

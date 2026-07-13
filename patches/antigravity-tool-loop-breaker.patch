@@ -76,10 +76,10 @@ index e72235f..1ba76ea 100644
    if (clientTool === "claude" && Array.isArray(translatedBody.tools)) {
      const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
 diff --git a/open-sse/translator/concerns/toolCall.js b/open-sse/translator/concerns/toolCall.js
-index 8de82f7..0bb94c2 100644
+index 8de82f7..a6ef2bc 100644
 --- a/open-sse/translator/concerns/toolCall.js
 +++ b/open-sse/translator/concerns/toolCall.js
-@@ -3,6 +3,61 @@
+@@ -3,6 +3,73 @@
  // Anthropic tool_use.id must match: ^[a-zA-Z0-9_-]+$
  const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
  
@@ -93,7 +93,7 @@ index 8de82f7..0bb94c2 100644
 +  return value;
 +}
 +
-+function canonicalToolCallSignature(toolCalls) {
++export function canonicalToolCallSignature(toolCalls) {
 +  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
 +  const calls = [];
 +  for (const call of toolCalls) {
@@ -121,11 +121,23 @@ index 8de82f7..0bb94c2 100644
 +
 +  let expected = null;
 +  let repeats = 0;
++  const trailingCallCounts = new Map();
 +  for (let i = body.messages.length - 1; i >= 0; i--) {
 +    const msg = body.messages[i];
 +    if (msg?.role === "tool" || msg?.role === "function") continue;
 +    if (msg?.role !== "assistant" || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
 +      break;
++    }
++
++    // A provider may return the same call many times in one parallel batch.
++    // Count those calls individually; comparing only the whole tool_calls array
++    // would treat the batch as a single repetition and miss the loop.
++    for (const call of msg.tool_calls) {
++      const callSignature = canonicalToolCallSignature([call]);
++      if (!callSignature) continue;
++      const count = (trailingCallCounts.get(callSignature) || 0) + 1;
++      if (count >= threshold) return true;
++      trailingCallCounts.set(callSignature, count);
 +    }
 +
 +    const signature = canonicalToolCallSignature(msg.tool_calls);
@@ -141,7 +153,7 @@ index 8de82f7..0bb94c2 100644
  // Fallback streaming tool_call id when provider omits one (index optional)
  export function fallbackToolCallId(index) {
    return index === undefined ? `call_${Date.now()}` : `call_${index}_${Date.now()}`;
-@@ -150,4 +205,3 @@ export function fixMissingToolResponses(body) {
+@@ -150,4 +217,3 @@ export function fixMissingToolResponses(body) {
    body.messages = newMessages;
    return body;
  }
@@ -184,14 +196,159 @@ index 9e029e2..466c50d 100644
  }
  
  // Register
+diff --git a/open-sse/translator/response/gemini-to-openai.js b/open-sse/translator/response/gemini-to-openai.js
+index 8f04ffd..baeec10 100644
+--- a/open-sse/translator/response/gemini-to-openai.js
++++ b/open-sse/translator/response/gemini-to-openai.js
+@@ -6,6 +6,8 @@ import { toOpenAIUsage } from "../concerns/usage.js";
+ import { reasoningDelta } from "../concerns/reasoning.js";
+ import { encodeDataUri } from "../concerns/image.js";
+ import { toOpenAIFinish } from "../concerns/finishReason.js";
++import { canonicalToolCallSignature } from "../concerns/toolCall.js";
++import { TOOL_LOOP_BREAKER_THRESHOLD } from "../../config/appConstants.js";
+ 
+ // Build chunk meta for current gemini state
+ function chunkMeta(state) {
+@@ -18,6 +20,15 @@ function emitFunctionCall(functionCall, state) {
+   // Restore original tool name from mapping (AG cloaking)
+   const fcName = state.toolNameMap?.get(rawName) || rawName;
+   const fcArgs = functionCall.args || {};
++  if (state.provider === FORMATS.ANTIGRAVITY) {
++    const signature = canonicalToolCallSignature([{
++      function: { name: fcName, arguments: fcArgs },
++    }]);
++    state.antigravityToolCallCounts ??= new Map();
++    const count = (state.antigravityToolCallCounts.get(signature) || 0) + 1;
++    state.antigravityToolCallCounts.set(signature, count);
++    if (count > TOOL_LOOP_BREAKER_THRESHOLD) return null;
++  }
+   const toolCallIndex = state.functionIndex++;
+   const toolCall = {
+     id: `${fcName}-${Date.now()}-${toolCallIndex}`,
+@@ -73,7 +84,8 @@ export function geminiToOpenAIResponse(chunk, state) {
+         }
+         
+         if (hasFunctionCall) {
+-          results.push(emitFunctionCall(part.functionCall, state));
++          const toolCallChunk = emitFunctionCall(part.functionCall, state);
++          if (toolCallChunk) results.push(toolCallChunk);
+         }
+         continue;
+       }
+@@ -92,7 +104,8 @@ export function geminiToOpenAIResponse(chunk, state) {
+ 
+       // Function call
+       if (part.functionCall) {
+-        results.push(emitFunctionCall(part.functionCall, state));
++        const toolCallChunk = emitFunctionCall(part.functionCall, state);
++        if (toolCallChunk) results.push(toolCallChunk);
+       }
+ 
+       // Inline data (images)
+@@ -144,4 +157,3 @@ register(FORMATS.GEMINI, FORMATS.OPENAI, null, geminiToOpenAIResponse);
+ register(FORMATS.GEMINI_CLI, FORMATS.OPENAI, null, geminiToOpenAIResponse);
+ register(FORMATS.ANTIGRAVITY, FORMATS.OPENAI, null, geminiToOpenAIResponse);
+ register(FORMATS.VERTEX, FORMATS.OPENAI, null, geminiToOpenAIResponse);
+-
 diff --git a/tests/translator/bugs-antigravity.test.js b/tests/translator/bugs-antigravity.test.js
-index 6ab37ef..d2cb887 100644
+index 6ab37ef..34d943c 100644
 --- a/tests/translator/bugs-antigravity.test.js
 +++ b/tests/translator/bugs-antigravity.test.js
-@@ -82,6 +82,61 @@ describe("Antigravity → Claude", () => {
+@@ -11,6 +11,34 @@ const AG2O = (req) =>
+   translateRequest(FORMATS.ANTIGRAVITY, FORMATS.OPENAI, "m", { request: req }, true, null, null);
+ 
+ describe("Antigravity → OpenAI", () => {
++  it("caps identical function calls inside one streamed response batch", () => {
++    const state = { ...initState(FORMATS.ANTIGRAVITY), provider: FORMATS.ANTIGRAVITY };
++    const repeated = Array.from({ length: 6 }, (_, i) => ({
++      functionCall: {
++        name: "search_files",
++        args: i % 2 === 0
++          ? { path: "/repo", pattern: "needle" }
++          : { pattern: "needle", path: "/repo" },
++      },
++    }));
++    const events = translateResponse(FORMATS.ANTIGRAVITY, FORMATS.OPENAI, {
++      response: {
++        responseId: "parallel-loop",
++        candidates: [{
++          content: { role: "model", parts: [
++            ...repeated,
++            { functionCall: { name: "read_file", args: { path: "/repo/a.js" } } },
++          ] },
++          finishReason: "STOP",
++        }],
++      },
++    }, state);
++
++    const calls = events.flatMap((event) => event.choices?.[0]?.delta?.tool_calls || []);
++    expect(calls.filter((call) => call.function.name === "search_files")).toHaveLength(3);
++    expect(calls.filter((call) => call.function.name === "read_file")).toHaveLength(1);
++  });
++
+   // antigravity-to-openai.js — content with BOTH functionResponse and functionCall/text
+   // previously returned toolResults early → dropped tool calls / text (fixed in #2225)
+   it("functionResponse + functionCall in same content keeps both", () => {
+@@ -82,6 +110,117 @@ describe("Antigravity → Claude", () => {
  });
  
  describe("Antigravity executor", () => {
++  it("aggregates identical calls across trailing batches of different sizes", () => {
++    const call = (id) => ({
++      id,
++      type: "function",
++      function: { name: "search_files", arguments: '{"pattern":"needle"}' },
++    });
++    const out = openaiToAntigravityRequest("gemini-3-flash-agent", {
++      messages: [
++        { role: "user", content: "Find the symbol." },
++        { role: "assistant", tool_calls: [call("first")] },
++        { role: "tool", tool_call_id: "first", content: "no matches" },
++        { role: "assistant", tool_calls: [call("second"), call("third")] },
++        { role: "tool", tool_call_id: "second", content: "no matches" },
++        { role: "tool", tool_call_id: "third", content: "no matches" },
++      ],
++      tools: [{
++        type: "function",
++        function: { name: "search_files", parameters: { type: "object", properties: {} } },
++      }],
++    }, true, { projectId: "project-1", connectionId: "conn-1" });
++
++    expect(out.request.toolConfig).toEqual({ functionCallingConfig: { mode: "NONE" } });
++  });
++
++  it("forces a text turn after an identical parallel tool-call batch", () => {
++    const out = openaiToAntigravityRequest("gemini-3-flash-agent", {
++      messages: [
++        { role: "user", content: "Find the symbol." },
++        {
++          role: "assistant",
++          tool_calls: Array.from({ length: 4 }, (_, i) => ({
++            id: `parallel_${i}`,
++            type: "function",
++            function: {
++              name: "search_files",
++              arguments: i % 2 === 0
++                ? '{"path":"/repo","pattern":"needle"}'
++                : '{"pattern":"needle","path":"/repo"}',
++            },
++          })),
++        },
++        ...Array.from({ length: 4 }, (_, i) => ({
++          role: "tool",
++          tool_call_id: `parallel_${i}`,
++          content: "no matches",
++        })),
++      ],
++      tools: [{
++        type: "function",
++        function: { name: "search_files", parameters: { type: "object", properties: {} } },
++      }],
++    }, true, { projectId: "project-1", connectionId: "conn-1" });
++
++    expect(out.request.toolConfig).toEqual({ functionCallingConfig: { mode: "NONE" } });
++  });
++
 +  it("forces a text turn after repeated semantically identical tool calls", () => {
 +    const messages = [{ role: "user", content: "Find the symbol and explain it." }];
 +    for (let i = 0; i < 3; i++) {
@@ -250,5 +407,4 @@ index 6ab37ef..d2cb887 100644
    it("strips optional from nested tool schemas", () => {
      const out = new AntigravityExecutor().transformRequest("gemini-2.5-pro", {
        request: {
-
 
