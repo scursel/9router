@@ -1,11 +1,11 @@
 # 9Router Quota Tracker Patch
 
 For the separately built Antigravity tool-loop circuit breaker, see
-[`tool-loop-breaker.md`](tool-loop-breaker.md). The quota overlay remains
-hash-pinned for both clean upstream 0.5.30 and the enhanced 0.5.30 circuit-
-breaker build. Other source builds fail cleanly when their chunk hashes differ.
+[`tool-loop-breaker.md`](tool-loop-breaker.md). The quota overlay is hash-pinned
+to both official 0.5.35 and the enhanced 0.5.35 circuit-breaker build. Other
+source builds fail cleanly when their chunk hashes differ.
 
-Local compatibility patch tested with 9Router `0.5.30`.
+Local compatibility patch tested with 9Router `0.5.35`.
 
 ## Providers
 
@@ -44,8 +44,12 @@ quarantine is automatically cleared when a different 9Router version appears.
 Version-change backups are stored below `~/.9router/db/backups/pre-update-*`.
 
 Original bundles used for rollback are stored in
-`~/.9router/quota-tracker-originals/0.5.30/` for upstream and
-`~/.9router/quota-tracker-originals/0.5.30-enhanced/` for the enhanced build.
+`~/.9router/quota-tracker-originals/official-0.5.35/` and
+`~/.9router/quota-tracker-originals/enhanced-0.5.35/`.
+
+The pre-update snapshot from 0.5.30, including the database, complete installed
+package, patch files, launcher, checksums, and Git bundle, is stored below
+`~/.9router/db/backups/pre-npm-update-0.5.30-to-0.5.35-*`.
 
 The pre-fix operational backup, including the SQLite database, systemd unit,
 startup script, bundles, patchers, and checksums, is stored in

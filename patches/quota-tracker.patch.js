@@ -11,14 +11,16 @@ const PACKAGE_ROOT = process.env.NINE_ROUTER_PACKAGE_ROOT ||
   path.join(HOME, ".hermes/node/lib/node_modules/9router");
 const PACKAGE_JSON = path.join(PACKAGE_ROOT, "package.json");
 const SERVER_ROOT = path.join(PACKAGE_ROOT, "app/.next-cli-build/server");
-const USAGE_RELATIVE = "chunks/8271.js";
+const USAGE_RELATIVE = "chunks/7211.js";
 const USAGE_CHUNK = path.join(SERVER_ROOT, USAGE_RELATIVE);
 const UI_RELATIVES = new Set([
   "app/(dashboard)/dashboard/quota/page.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-5dcceb20e5aa06cf.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-870b92d68d6da60f.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-4a4e8b584d49bc4c.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js",
 ]);
-const SUPPORTED_VERSION = "0.5.30";
+const SUPPORTED_VERSION = "0.5.35";
 const UPSTREAM_CATALOG_HASHES = {
   "app/api/models/route.js": "7e150ccf2352d9457a204e87c89065a8ad81c9a3bdae1647ef6dbfab1efd9fc7",
   "app/api/provider-nodes/route.js": "a6f1767762b0b03f3a43b38c04eb9ab11fa60bf62fe9a5ac0be3b7cf8a36e1a2",
@@ -65,24 +67,58 @@ const ENHANCED_CATALOG_HASHES = {
   "app/(dashboard)/dashboard/quota/page.js": "28398ce4513f781f8603e2d8df8453375a45b500e5a0370777c5302c6b05882d",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-870b92d68d6da60f.js": "4277a9a97a6fbc905e8bf7db774699da92aa23318cdb9dbc92856bda5423b77b",
 };
-const ENHANCED_UI_RELATIVE =
-  "../static/chunks/app/(dashboard)/dashboard/quota/page-870b92d68d6da60f.js";
-const CATALOG_VARIANT = fs.existsSync(path.join(SERVER_ROOT, ENHANCED_UI_RELATIVE))
-  ? "enhanced"
-  : "upstream";
-const CATALOG_HASHES = CATALOG_VARIANT === "enhanced"
-  ? ENHANCED_CATALOG_HASHES
-  : UPSTREAM_CATALOG_HASHES;
-const ORIGINALS_DIR = path.join(
-  __dirname,
-  CATALOG_VARIANT === "enhanced"
-    ? "quota-tracker-originals/0.5.30-enhanced"
-    : "quota-tracker-originals/0.5.30",
-);
+const OFFICIAL_0535_CATALOG_HASHES = {
+  "chunks/1829.js": "5a47eafdb2eb494aa49062405bfd710ed29e5a672eef7b04fc61e3cc1fd74d4d",
+  "chunks/615.js": "d7efe526cd81539c92f9743c7745714dad24b4842cea7f731ccc4663a7de5b64",
+  "chunks/7011.js": "1f37fd477af0bacf10d0a267f042a389e98b5ebdc55d74f5f072f7cd981c06da",
+  "chunks/7211.js": "8649d5a3c0c6ae26cac0e9a929825b3bd32de80853e5be7729bcfe2e35cd5cb4",
+  "chunks/827.js": "6b1a4f96c6995d8d5dfd9804ccaed7c7f8a7d3bbb723e2cf1b17551842083de2",
+  "chunks/869.js": "baa6167a895f4d990beed132d2a734150f14a1c783b57755f356bdbf964d9a71",
+  "app/api/provider-nodes/route.js": "e8750c989854b8f5d74dd5df6b84c71a7903180d2c95f4742feeabe17aae7095",
+  "app/api/providers/client/route.js": "87631725154d2fdafd0c8088ba384254a951bd2a3f113455e7e035895c1ea75a",
+  "app/api/providers/validate/route.js": "03593b3ef6d26e507fdb10194e29ae732bf5fb4e7d27b54363be83e82fd3775d",
+  "app/api/usage/[connectionId]/route.js": "ddf6444af988cada6d6e07d3eada9c5e580a74736ef18da715ca4cbc88dd62fa",
+  "app/api/usage/providers/route.js": "927e01c945f1ba8916ff3e2316a447924419f7061ec83d522b61dfe3053fadd9",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "39fc3605e2d881c0eb41ff27d877144b0a3e5ed75abe06762b1a91211b737267",
+  "app/api/v1/audio/voices/route.js": "ee752f0d3d3b44e0dcbbf083749ee18ae8416b0d5111680e1e073d1c36dd3a18",
+  "app/api/v1/models/info/route.js": "a8be98a1316ce26c9f3620bbbb17fcc763ca61f058fc6f95637e7cfe4f38d5e8",
+  "app/api/v1beta/models/route.js": "71a2ef33077cd1906af3688bde526a18a71f6403914c3b02c5a30e4e3fd5ec3a",
+  "app/(dashboard)/dashboard/quota/page.js": "5b7fb600fa5bd4a1a80170de3b62cfa8c756364883668649baf44cf69279587c",
+  "../static/chunks/1321-7f70ea1854851a9b.js": "bd14232cfee41fd6e37c56f84c9896b2644d409d13d66ea009a91941fc8807b3",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-4a4e8b584d49bc4c.js": "0aacfa30c851c78a4d8aee57cb809593f3d3cd0e02a560cd88b4c6763ee984a8",
+};
+const ENHANCED_0535_CATALOG_HASHES = {
+  "chunks/1829.js": "5a47eafdb2eb494aa49062405bfd710ed29e5a672eef7b04fc61e3cc1fd74d4d",
+  "chunks/615.js": "d7efe526cd81539c92f9743c7745714dad24b4842cea7f731ccc4663a7de5b64",
+  "chunks/6323.js": "96abaaa3eca8050d9b7ca4e6f2d6b5031872b8d2a7104163f7789ac5af79d2df",
+  "chunks/7211.js": "f6e033feb6aa66c56ad1f21b3c5bc7a96a8bd671dd93723aeffdefa40dfdc83f",
+  "chunks/827.js": "6b1a4f96c6995d8d5dfd9804ccaed7c7f8a7d3bbb723e2cf1b17551842083de2",
+  "chunks/869.js": "baa6167a895f4d990beed132d2a734150f14a1c783b57755f356bdbf964d9a71",
+  "app/api/provider-nodes/route.js": "900f80eeff3c13b57df0018d63e7b2031e4b88eb9c99586e968cbcd9c7a08578",
+  "app/api/providers/client/route.js": "39981e12376bcec0592a7cd914f318f7017a255e1e57b7e8147c52c0f6aa4d1c",
+  "app/api/providers/validate/route.js": "1eac5b362f756f65dda97440eac8970d5dbb71a4b8f913c8c1d54e9d6e17a5c1",
+  "app/api/usage/[connectionId]/route.js": "44f8b09ec4f555dec8bd77241ebf7d95fa7f49242c42be9f1410f4728f569435",
+  "app/api/usage/providers/route.js": "917839c509475f85fba9f99fb9459b64ed192ecb00a9e012cbbba90569ed78ab",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "e89aa546ed335781b3a493b83de991e4069d800f2fd9f14187d732b8f4b7baa0",
+  "app/api/v1/audio/voices/route.js": "aee99d062e446112b8f733e340af130c1605ad849050f3e39f971646f52aaa67",
+  "app/api/v1/models/info/route.js": "9b2146b1c04cc3f9549b8e96fa5daf5bcf7ab0baec00e96f82baf2b88262c717",
+  "app/api/v1beta/models/route.js": "6ba12477bd329dcf175b0befdcf869dc2a16b88c9611eb2154c99ebf1628dde7",
+  "app/(dashboard)/dashboard/quota/page.js": "d0596774e187e860e8c47de26671ef6580c0d0665c53a05af1eed714ac1807e0",
+  "../static/chunks/1321-7f70ea1854851a9b.js": "bd14232cfee41fd6e37c56f84c9896b2644d409d13d66ea009a91941fc8807b3",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js": "18191964c4b89b1bea05564ce810e79d56404e54e17d5ae452f5a0ba46f96258",
+};
+const CATALOG_VARIANT = fs.existsSync(path.join(
+  SERVER_ROOT,
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js",
+)) ? "enhanced-0.5.35" : "official-0.5.35";
+const CATALOG_HASHES = CATALOG_VARIANT === "enhanced-0.5.35"
+  ? ENHANCED_0535_CATALOG_HASHES
+  : OFFICIAL_0535_CATALOG_HASHES;
+const ORIGINALS_DIR = path.join(__dirname, `quota-tracker-originals/${CATALOG_VARIANT}`);
 const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
-const DISPATCH_MARKER = "let T={github:";
+const DISPATCH_MARKER = "let V={github:";
 const USAGE_ALLOW_MARKER =
   "x=d.A.filter(a=>a.features?.usage).map(a=>a.id)";
 const USAGE_ALLOW_PATCHED =
@@ -363,15 +399,15 @@ function injectedCode() {
   return (
     MAIN_MARKER +
     runtimeFunctions() +
-    'async function qtpGet(a,b,c){try{let g=await(0,f.u9)(a,{method:"GET",headers:{Authorization:"Bearer "+b,Accept:"application/json"}},1e4,c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
+    'async function qtpGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Authorization:"Bearer "+b,Accept:"application/json"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'function qtpError(a,b){return{message:b+" quota API "+(a.status?"error ("+a.status+").":a.error+"."),quotas:{}}}' +
     'async function qtpOpenRouter(a,b){if(!a)return{message:"OpenRouter API key not available.",quotas:{}};let c=await qtpGet("https://openrouter.ai/api/v1/credits",a,b);if(c.ok){let a=qtpParseOpenRouter(c.body);if(a)return a}let d=await qtpGet("https://openrouter.ai/api/v1/auth/key",a,b);if(d.ok){let a=qtpParseOpenRouter(d.body);if(a)return a}return qtpError(c.status===401||c.status===403?c:d,"OpenRouter")}' +
     'async function qtpDeepSeek(a,b){if(!a)return{message:"DeepSeek API key not available.",quotas:{}};let c=await qtpGet("https://api.deepseek.com/user/balance",a,b);if(!c.ok)return qtpError(c,"DeepSeek");let d=qtpParseDeepSeek(c.body);return d||{message:"DeepSeek connected. No balance data was returned.",quotas:{}}}' +
     'async function qtpCommandCode(a,b){if(!a)return{message:"CommandCode API key not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.commandcode.ai/alpha/billing/credits",a,b),qtpGet("https://api.commandcode.ai/alpha/billing/subscriptions",a,b)]);if(!c.ok)return qtpError(c,"CommandCode");let e=qtpParseCommandCode(c.body,d.ok?d.body:null);return e||{message:"CommandCode connected. No quota data was returned.",quotas:{}}}' +
-    'async function qtpCookieGet(a,b,c){try{let g=await(0,f.u9)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},1e4,c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
+    'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
     'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
-    'let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await K(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions)};'
+    'let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await M(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions)};'
   );
 }
 
@@ -379,31 +415,40 @@ function buildUsagePatched(original) {
   if (!original.includes(DISPATCH_MARKER)) {
     throw new Error("9Router usage dispatch marker not found");
   }
-  if (!original.includes(API_KEY_ALLOW_MARKER)) {
-    throw new Error("9Router API-key allow-list marker not found");
+  const grokMarker =
+    '"grok-cli":a=>M(a.accessToken,a.providerSpecificData,a.proxyOptions)';
+  if (!original.includes(grokMarker)) {
+    throw new Error("Native Grok usage marker not found");
   }
   return original
+    .replace(DISPATCH_MARKER, `${injectedCode()}let V={...qtpProviders,github:`)
     .replace(
-      DISPATCH_MARKER,
-      `${injectedCode()}let T={...qtpProviders,github:`,
-    )
-    .replace(USAGE_ALLOW_MARKER, USAGE_ALLOW_PATCHED)
-    .replace(API_KEY_ALLOW_MARKER, API_KEY_ALLOW_PATCHED);
+      grokMarker,
+      '"grok-cli":async a=>qtpNormalizeXai(await M(a.accessToken,a.providerSpecificData,a.proxyOptions))',
+    );
 }
 
 function buildProvidersPatched(original) {
-  if (!original.includes(USAGE_ALLOW_MARKER)) {
+  const usagePattern =
+    /([A-Za-z_$][\w$]*\.A\.filter\(([A-Za-z_$][\w$]*)=>\2\.features\?\.usage\)\.map\(\2=>\2\.id\))/;
+  const apiKeyPattern =
+    /([A-Za-z_$][\w$]*\.A\.filter\(([A-Za-z_$][\w$]*)=>\2\.features\?\.usageApikey\)\.map\(\2=>\2\.id\))/;
+  if (!usagePattern.test(original)) {
     throw new Error("Provider client usage allow-list marker not found");
   }
-  if (!original.includes(API_KEY_ALLOW_MARKER)) {
+  if (!apiKeyPattern.test(original)) {
     throw new Error("Provider client allow-list marker not found");
   }
+  const usageProviders =
+    '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass"';
+  const apiKeyProviders =
+    '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass"';
   return original
-    .replace(USAGE_ALLOW_MARKER, USAGE_ALLOW_PATCHED)
-    .replace(
-      API_KEY_ALLOW_MARKER,
-      `${API_KEY_ALLOW_PATCHED}${PROVIDERS_MARKER}`,
-    );
+    .replace(usagePattern, (expression) =>
+      `[...new Set([...${expression},${usageProviders}])]`)
+    .replace(apiKeyPattern, (expression) =>
+      `[...new Set([...${expression},${apiKeyProviders}])]`)
+    + PROVIDERS_MARKER;
 }
 
 function buildUiPatched(original) {
