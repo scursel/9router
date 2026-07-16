@@ -33,12 +33,12 @@ ed472b3fc8cbf579d12aba860c468abe4a10125ffc85e56d08ae20fc407a3afe
 - All 18 enhanced-build bundle hashes validated.
 - Official npm tarball fixture passed apply, check, rollback, and clean check.
 - `/api/health`, `/api/version`, and `/v1/models` passed.
-- OpenRouter, DeepSeek, CommandCode, ClinePass, and xAI live quota calls passed.
+- OpenRouter, DeepSeek, CommandCode, ClinePass, xAI, and MiMo live quota calls passed.
 - Dashboard currency rendering was checked with browser cache disabled.
 
-Both xAI OAuth sessions were expired at validation time and were renewed using
-their existing refresh tokens. The MiMo console cookie remains expired and
-requires a normal console login; this is session expiry, not a code regression.
+Both xAI OAuth sessions were renewed using their existing refresh tokens. The
+MiMo console session was renewed through a normal login and its USD balance was
+validated in both the API and dashboard renderer.
 
 ## Recovery
 
