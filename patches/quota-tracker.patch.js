@@ -119,6 +119,12 @@ const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
 const DISPATCH_MARKER = "let V={github:";
+const GROK_RESULT_MARKER = "return{plan:i.plan,quotas:i.quotas}";
+const GROK_RESULT_PATCHED =
+  "return{plan:i.plan,quotas:i.quotas,rawConfig:i.rawConfig}";
+const GROK_EMPTY_RESULT_MARKER = "quotas:{}};return{plan:i.plan,quotas:i.quotas}";
+const GROK_EMPTY_RESULT_PATCHED =
+  "quotas:{},rawConfig:i.rawConfig};return{plan:i.plan,quotas:i.quotas}";
 const USAGE_ALLOW_MARKER =
   "x=d.A.filter(a=>a.features?.usage).map(a=>a.id)";
 const USAGE_ALLOW_PATCHED =
@@ -266,16 +272,46 @@ function qtpParseCommandCode(body, subscriptionBody = null) {
 
 function qtpNormalizeXai(result) {
   if (!result?.quotas || typeof result.quotas !== "object") return result;
-  const prepaid = result.quotas.Prepaid;
-  if (!prepaid) return result;
-
   const quotas = { ...result.quotas };
-  delete quotas.Prepaid;
-  quotas["Prepaid balance (USD)"] = qtpBalance(
-    qtpNum(prepaid.total, 0) / 100,
-    prepaid.resetAt,
+  const config = result.rawConfig || {};
+  const usagePercent = qtpNum(
+    config.creditUsagePercent ?? config.credit_usage_percent,
   );
-  return { ...result, quotas };
+  const period = config.currentPeriod || config.current_period || {};
+  const periodType = String(period.type || "").toUpperCase();
+  const hasIncludedQuota = Object.keys(quotas).some((name) =>
+    /included|subscription usage/i.test(name),
+  );
+  let addedSubscriptionUsage = false;
+  if (
+    Number.isFinite(usagePercent) &&
+    !hasIncludedQuota &&
+    (!periodType || periodType.includes("WEEKLY"))
+  ) {
+    quotas["Subscription usage (weekly)"] = qtpQuota(
+      Math.min(100, usagePercent),
+      100,
+      period.end || period.resetAt || config.billingPeriodEnd,
+    );
+    addedSubscriptionUsage = true;
+  }
+
+  const prepaid = quotas.Prepaid;
+  if (prepaid) {
+    delete quotas.Prepaid;
+    quotas["Prepaid balance (USD)"] = qtpBalance(
+      qtpNum(prepaid.total, 0) / 100,
+      prepaid.resetAt,
+    );
+  }
+  const { rawConfig, ...normalized } = result;
+  if (
+    addedSubscriptionUsage &&
+    /does not expose a numeric included quota/i.test(normalized.message || "")
+  ) {
+    delete normalized.message;
+  }
+  return { ...normalized, quotas };
 }
 
 function qtpParseMimo(body) {
@@ -420,7 +456,15 @@ function buildUsagePatched(original) {
   if (!original.includes(grokMarker)) {
     throw new Error("Native Grok usage marker not found");
   }
+  if (!original.includes(GROK_RESULT_MARKER)) {
+    throw new Error("Native Grok result marker not found");
+  }
+  if (!original.includes(GROK_EMPTY_RESULT_MARKER)) {
+    throw new Error("Native empty Grok result marker not found");
+  }
   return original
+    .replace(GROK_EMPTY_RESULT_MARKER, GROK_EMPTY_RESULT_PATCHED)
+    .replace(GROK_RESULT_MARKER, GROK_RESULT_PATCHED)
     .replace(DISPATCH_MARKER, `${injectedCode()}let V={...qtpProviders,github:`)
     .replace(
       grokMarker,

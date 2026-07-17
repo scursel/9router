@@ -60,4 +60,7 @@ startup script, bundles, patchers, and checksums, is stored in
 The Grok collector uses the xAI OAuth connection already stored by 9Router. If
 that session and its refresh token have expired, reconnect xAI in the Providers
 screen. A normal xAI OAuth token is not a Management API key and is never sent
-to the xAI Management API by this patch.
+to the xAI Management API by this patch. When the billing response provides
+`creditUsagePercent` and a weekly period but no absolute allotment, the tracker
+shows a 100-point percentage bar with the provider's period end as its reset
+time. It does not estimate or invent a credit total.

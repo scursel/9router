@@ -77,10 +77,43 @@ const xai = qtpNormalizeXai({
     "On-demand": { used: 1, total: 1, remainingPercentage: 0 },
     Prepaid: { used: 0, total: 573, remainingPercentage: 100, resetAt: null },
   },
+  rawConfig: {
+    currentPeriod: {
+      type: "USAGE_PERIOD_TYPE_WEEKLY",
+      start: "2026-07-16T18:18:37.950203+00:00",
+      end: "2026-07-23T18:18:37.950203+00:00",
+    },
+    creditUsagePercent: 100,
+  },
 });
 assert.equal(xai.quotas.Prepaid, undefined);
 assert.equal(xai.quotas["Prepaid balance (USD)"].total, 5.73);
 assert.equal(xai.quotas["On-demand"].total, 1);
+assert.equal(xai.quotas["Subscription usage (weekly)"].used, 100);
+assert.equal(xai.quotas["Subscription usage (weekly)"].total, 100);
+assert.equal(xai.quotas["Subscription usage (weekly)"].remainingPercentage, 0);
+assert.equal(
+  xai.quotas["Subscription usage (weekly)"].resetAt,
+  "2026-07-23T18:18:37.950Z",
+);
+assert.equal(xai.rawConfig, undefined);
+
+const xaiPercentOnly = qtpNormalizeXai({
+  plan: "GrokPro",
+  message: "Subscription access is active; Grok does not expose a numeric included quota.",
+  quotas: {},
+  rawConfig: {
+    currentPeriod: {
+      type: "USAGE_PERIOD_TYPE_WEEKLY",
+      end: "2026-07-23T18:18:37.950203+00:00",
+    },
+    creditUsagePercent: 100,
+    prepaidBalance: { val: 0 },
+  },
+});
+assert.equal(xaiPercentOnly.message, undefined);
+assert.equal(xaiPercentOnly.rawConfig, undefined);
+assert.equal(xaiPercentOnly.quotas["Subscription usage (weekly)"].used, 100);
 
 const mimo = qtpParseMimo({
   code: 0,

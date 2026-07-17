@@ -12,7 +12,8 @@ bundles, account databases, API keys, OAuth tokens, or browser cookies.
 - OpenRouter credit balance and usage.
 - DeepSeek available, promotional, and topped-up balances.
 - CommandCode monthly credits plus 5-hour and 7-day windows.
-- xAI/Grok prepaid balance and existing OAuth quota.
+- xAI/Grok prepaid balance and existing OAuth quota, with a percentage-only
+  weekly fallback when xAI omits the numeric credit allotment.
 - Xiaomi MiMo available, paid, and granted balances.
 - ClinePass 5-hour, 7-day, and 30-day windows.
 
