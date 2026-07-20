@@ -7,7 +7,7 @@ emit the same structured tool call even after the client returns an unchanged
 result or explicitly blocks the loop. A captured production session repeated
 the same `search_files` operation 18 times.
 
-The upstream 9Router 0.5.35 path preserves the individual OpenAI tool-call and
+The upstream 9Router 0.5.40 path preserves the individual OpenAI tool-call and
 tool-result handshake, but does not stop the provider from generating another
 identical `functionCall` from history. Removing `tools` alone is insufficient:
 Gemini can infer and emit the call from prior turns even without current
@@ -32,19 +32,19 @@ conversation state and does not change calls below the threshold.
 
 ## Apply to an upstream checkout
 
-The patch targets 9Router 0.5.35 commit
-`bc252ea80298d4879dc6b3c69585af1610d2c76f`.
+The patch targets 9Router 0.5.40 commit
+`79918c7830695bbca4a45c9fea4a42c3e9fd73d1`.
 
 ```bash
 git clone https://github.com/decolua/9router.git
 cd 9router
-git checkout bc252ea80298d4879dc6b3c69585af1610d2c76f
+git checkout 79918c7830695bbca4a45c9fea4a42c3e9fd73d1
 git apply /path/to/9router-enhanced/patches/antigravity-tool-loop-breaker.patch
 
-npm install --ignore-scripts
-npm install --no-save --package-lock=false --force next@16.2.1 esbuild
-npm install --prefix tests
-./tests/node_modules/.bin/vitest run \
+npm install
+npm install --prefix cli
+npm install --prefix /tmp vitest@4
+NODE_PATH=/tmp/node_modules /tmp/node_modules/.bin/vitest run \
   --config tests/vitest.config.js \
   tests/translator/bugs-antigravity.test.js
 
@@ -91,7 +91,8 @@ tool result 42 -> finish_reason=stop, content=42
 
 Focused translator tests pass 12/12; the related streaming and thinking suite
 passes 54/54 across three files. The wider translator suite on upstream
-0.5.35 has unrelated pre-existing/environment-sensitive snapshot failures;
+0.5.40 has one unrelated upstream catalog assertion failure in
+`unit/antigravity-mitm.test.js`;
 those are not changed by this patch.
 
 ## Rollback
@@ -103,7 +104,7 @@ committed because it contains runtime package and database material.
 
 ## Quota overlay compatibility
 
-The quota overlay is hash-pinned to the enhanced 0.5.35 build produced with
-Next.js 16.2.1. The catalog was regenerated after the circuit-breaker build and
+The quota overlay is hash-pinned to the enhanced 0.5.40 build produced with
+Next.js 16.2.10. The catalog was regenerated after the circuit-breaker build and
 validates all 18 target bundles. Unknown builds still fail closed and start
 without modifying bundles.

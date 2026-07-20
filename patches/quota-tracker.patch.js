@@ -19,8 +19,10 @@ const UI_RELATIVES = new Set([
   "../static/chunks/app/(dashboard)/dashboard/quota/page-870b92d68d6da60f.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-4a4e8b584d49bc4c.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-c36e962e75b41c07.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-823b8581f95ccfaa.js",
 ]);
-const SUPPORTED_VERSION = "0.5.35";
+const SUPPORTED_VERSION = "0.5.40";
 const UPSTREAM_CATALOG_HASHES = {
   "app/api/models/route.js": "7e150ccf2352d9457a204e87c89065a8ad81c9a3bdae1647ef6dbfab1efd9fc7",
   "app/api/provider-nodes/route.js": "a6f1767762b0b03f3a43b38c04eb9ab11fa60bf62fe9a5ac0be3b7cf8a36e1a2",
@@ -107,13 +109,53 @@ const ENHANCED_0535_CATALOG_HASHES = {
   "../static/chunks/1321-7f70ea1854851a9b.js": "bd14232cfee41fd6e37c56f84c9896b2644d409d13d66ea009a91941fc8807b3",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js": "18191964c4b89b1bea05564ce810e79d56404e54e17d5ae452f5a0ba46f96258",
 };
+const OFFICIAL_0540_CATALOG_HASHES = {
+  "../static/chunks/1321-e8265f2c70e59151.js": "2c0eae4ca89617c85195c3623c6d3de283f7cd1f128fea75ba8dd580bb6ffe30",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-c36e962e75b41c07.js": "a72be7d966563e0e1bafc3a2ceb08f5979bf280a08131082140e6362da3ce5ea",
+  "app/(dashboard)/dashboard/quota/page.js": "44c3a00a47f17fe3fbe89386d8ffb4697053aae7403ff7e1433cf741a4ead4a7",
+  "app/api/provider-nodes/route.js": "0bcb6a6f2de497abc59028aec3bc1cf6c46f82e1af42c71ad497ee767ab51a23",
+  "app/api/providers/client/route.js": "060b06afa0565aeac20192944ec25aac93802e5fcf5fecf84e57a693cbf4a09e",
+  "app/api/providers/validate/route.js": "7e7c05b3953a5a9d9d02857f0b7706505884b6f7fdd41c97ecdffdf2fe877ab8",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "2afe90b4fa329a7befa787a05bde2c7966e2752c57ba82431a859be3ca754a20",
+  "app/api/usage/[connectionId]/route.js": "e9483928a59713e5d6d5b614b22a47d0fae6cf024659c15f3b9a380892e5ee7f",
+  "app/api/usage/providers/route.js": "3b059c0154612639eebc5608c28dfcccc43b634c34354e7a1b65b5ddc72e71ff",
+  "app/api/v1/audio/voices/route.js": "e0224cb9614e79d19d340ae9bf19fe8ee1d3942e20514665b1ecf2797d8a3c5b",
+  "app/api/v1/models/info/route.js": "bd2a812f684095d98d106c7518cd8a62cabb86c0f33c37fa9794023f83956791",
+  "app/api/v1beta/models/route.js": "2806044f3c0597e825f5fb7a25d700e65be59cfc25d2fb42effd075f66313ac3",
+  "chunks/1829.js": "a3a665d9f01a2a03999daeb07811a4901edc9329e65dc82e5413b97bfbc42a7d",
+  "chunks/615.js": "52f5718ec2ef40d6e7c1029d63a89c1bc40c2d3cf526f38e0d9e297947196ed2",
+  "chunks/7011.js": "ed5e82503b9be037f0fa5b8c645f87db38afcc5a20847da02cf2ef3f5694f39a",
+  "chunks/7211.js": "8649d5a3c0c6ae26cac0e9a929825b3bd32de80853e5be7729bcfe2e35cd5cb4",
+  "chunks/827.js": "78f986979bd1532033d2eac506d33598860610e3c72dc619229b8b0d2abb1a7e",
+  "chunks/869.js": "2ca4ac91c7ee19c58b0b85382c912bf9ed44fbce137c507f8adcef42066fcfa0",
+};
+const ENHANCED_0540_CATALOG_HASHES = {
+  "../static/chunks/1321-e8265f2c70e59151.js": "2c0eae4ca89617c85195c3623c6d3de283f7cd1f128fea75ba8dd580bb6ffe30",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-823b8581f95ccfaa.js": "10b4996510efb814574a857906b3c41cf15cbbb707e25d38e2e3f3a393f70ee4",
+  "app/(dashboard)/dashboard/quota/page.js": "8e52365109214094739bfe769535b569a02028e3953e5ae8a08f4b4428589b3f",
+  "app/api/provider-nodes/route.js": "5230cd1802f4f81a6b409fdd94400bed37baed7bc2b8cfb2516f612fa59fa787",
+  "app/api/providers/client/route.js": "e19d98ac60e19135caa01f0fc5e1cd75626d0e3cc9bf88a18dc796a765d14018",
+  "app/api/providers/validate/route.js": "a169d69cbb70ff8d0fedbb4b76e376fe206c78f959eccc7590a36995166b0178",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "df974ac606e87debe148c8bf751446e82b47b3f71ecee7158e0e1f6841be92fd",
+  "app/api/usage/[connectionId]/route.js": "de905678dc1a6d72870c982bec2101785e812d20010b35285db93d2f53ef8449",
+  "app/api/usage/providers/route.js": "1127ea250cadda1b433eddd6e48308a78a00584ce024a654181a3e7eaa763838",
+  "app/api/v1/audio/voices/route.js": "4c666f2bfb569a264687ea360dab0f90d0db6778d41dfef876f9e0430f6a620f",
+  "app/api/v1/models/info/route.js": "c3c293348ffbb663a49697eba2ebba67b682b2c9a21f59a56acd78feeca531ab",
+  "app/api/v1beta/models/route.js": "4fca2f47222fff1398c480660a596a3fe4bb2da097d5b8488cc2066a8e6c4ed6",
+  "chunks/1829.js": "a3a665d9f01a2a03999daeb07811a4901edc9329e65dc82e5413b97bfbc42a7d",
+  "chunks/615.js": "52f5718ec2ef40d6e7c1029d63a89c1bc40c2d3cf526f38e0d9e297947196ed2",
+  "chunks/7211.js": "f6e033feb6aa66c56ad1f21b3c5bc7a96a8bd671dd93723aeffdefa40dfdc83f",
+  "chunks/827.js": "78f986979bd1532033d2eac506d33598860610e3c72dc619229b8b0d2abb1a7e",
+  "chunks/869.js": "2ca4ac91c7ee19c58b0b85382c912bf9ed44fbce137c507f8adcef42066fcfa0",
+  "chunks/9193.js": "7fc869a05ebeff34c6b1cd85fb32fb1ebe693fd2bc2c99d4d66e82867732030a",
+};
 const CATALOG_VARIANT = fs.existsSync(path.join(
   SERVER_ROOT,
-  "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js",
-)) ? "enhanced-0.5.35" : "official-0.5.35";
-const CATALOG_HASHES = CATALOG_VARIANT === "enhanced-0.5.35"
-  ? ENHANCED_0535_CATALOG_HASHES
-  : OFFICIAL_0535_CATALOG_HASHES;
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-823b8581f95ccfaa.js",
+)) ? "enhanced-0.5.40" : "official-0.5.40";
+const CATALOG_HASHES = CATALOG_VARIANT === "enhanced-0.5.40"
+  ? ENHANCED_0540_CATALOG_HASHES
+  : OFFICIAL_0540_CATALOG_HASHES;
 const ORIGINALS_DIR = path.join(__dirname, `quota-tracker-originals/${CATALOG_VARIANT}`);
 const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";

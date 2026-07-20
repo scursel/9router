@@ -37,15 +37,15 @@ build, deployment, and rollback details.
 
 ## Compatibility
 
-The patch is tested against both the official and enhanced 9Router `0.5.35`
+The patch is tested against both the official and enhanced 9Router `0.5.40`
 builds. A different version is accepted only when every target bundle is
 byte-compatible with a tested build. An incompatible update is left untouched
 and starts as clean upstream 9Router.
 
-Upstream `0.5.35` improved the native Grok collector with subscription-access
-and monthly-included-credit parsing. This overlay preserves that implementation
-and adds USD normalization. The other balance collectors, currency rendering,
-update guard, and Antigravity loop breaker are not present upstream.
+Upstream `0.5.40` retains the native Grok subscription collector introduced in
+`0.5.35`. This overlay preserves it and adds USD normalization plus the weekly
+percentage fallback. The other balance collectors, currency rendering, update
+guard, and Antigravity loop breaker are not present upstream.
 
 The startup supervisor:
 
@@ -84,4 +84,4 @@ curl -fsS http://127.0.0.1:20128/api/health
 
 See [operations.md](docs/operations.md) for rollback, sanitization, backups, and
 update-guard behavior. The audited deployment details are recorded in
-[update-0.5.35.md](docs/update-0.5.35.md).
+[update-0.5.40.md](docs/update-0.5.40.md).
