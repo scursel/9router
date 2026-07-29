@@ -11,6 +11,7 @@ else
   APP_ROOT="$HOME/.hermes/node/lib/node_modules/9router"
 fi
 PATCH="$HOME/.9router/quota-tracker.patch.js"
+CORS_PATCH="$HOME/.9router/cors-preflight.patch.js"
 DB="$HOME/.9router/db/data.sqlite"
 BACKUP_ROOT="$HOME/.9router/db/backups"
 VERSION_STATE="$HOME/.9router/quota-tracker-version"
@@ -44,6 +45,7 @@ backup_on_version_change() {
   fi
   cp "$APP_ROOT/package.json" "$backup_dir/package.json"
   cp "$PATCH" "$HOME/.9router/quota-tracker.test.js" "$0" "$backup_dir/"
+  [[ -f "$CORS_PATCH" ]] && cp "$CORS_PATCH" "$backup_dir/"
   chmod 600 "$backup_dir"/*
   printf '%s\n' "$CURRENT_VERSION" >"${VERSION_STATE}.$$"
   chmod 600 "${VERSION_STATE}.$$"
@@ -78,6 +80,15 @@ else
   fi
   echo "$SANITIZE_OUTPUT"
   write_status "clean-incompatible"
+fi
+
+if [[ -f "$CORS_PATCH" ]]; then
+  if CORS_OUTPUT="$(node "$CORS_PATCH" --apply 2>&1)"; then
+    echo "$CORS_OUTPUT"
+  else
+    echo "[cors-preflight] apply failed; custom-server.js left untouched, continuing without it" >&2
+    echo "$CORS_OUTPUT" >&2
+  fi
 fi
 
 9router --no-browser --tray --port 20128 --host 0.0.0.0 2>&1 &

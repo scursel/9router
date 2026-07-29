@@ -1,8 +1,9 @@
 # 9Router Enhanced
 
 Private compatibility overlay for 9Router with additional quota and balance
-collectors, financial formatting, update-safe startup recovery, and an
-Antigravity tool-loop circuit breaker for agent clients such as Hermes.
+collectors, financial formatting, update-safe startup recovery, a CORS
+preflight fix for browser/Electron AI clients, and an Antigravity tool-loop
+circuit breaker for agent clients such as Hermes.
 
 This repository does not contain the 9Router npm package, compiled upstream
 bundles, account databases, API keys, OAuth tokens, or browser cookies.
@@ -19,6 +20,23 @@ bundles, account databases, API keys, OAuth tokens, or browser cookies.
 
 USD values are rendered as currency. Renewal dates and rolling reset times are
 preserved when the provider exposes them.
+
+## CORS preflight fix
+
+Browser/Electron clients that call 9Router over Tailscale or another
+non-loopback address (the ONLYOFFICE AI plugin, VS Code, Cursor, any
+`fetch()`-based OpenAI-compatible client) got a generic `Failed to fetch`:
+the browser's CORS preflight `OPTIONS` request never carries an
+`Authorization` header, and 9Router's auth middleware rejected unauthenticated
+`OPTIONS` from remote origins with `401` before the real request (with the
+API key) was ever sent.
+
+The patch at [`patches/cors-preflight.patch.js`](patches/cors-preflight.patch.js)
+extends the existing `app/custom-server.js` HTTP wrapper to short-circuit
+`OPTIONS` with `204` + CORS headers ahead of Next.js/auth, and to stamp CORS
+headers on every other response so real auth failures stay readable to the
+browser. See [`docs/cors-preflight.md`](docs/cors-preflight.md) for the root
+cause, verification commands, and rollback.
 
 ## Antigravity tool-loop breaker
 
