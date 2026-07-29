@@ -1,5 +1,9 @@
 # CORS Preflight Patch
 
+This is modification 3 of 3 in this overlay — see the top-level
+[`README.md`](../README.md) for the full list (quota tracker, Antigravity
+tool-loop breaker, CORS preflight fix).
+
 Fixes `Failed to fetch` from browser/Electron AI clients (ONLYOFFICE AI
 plugin, VS Code, Cursor, any `fetch()`-based OpenAI-compatible client) when
 calling 9Router over Tailscale or another non-loopback address.

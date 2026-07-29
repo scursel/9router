@@ -1,7 +1,12 @@
 # 9Router Quota Tracker Patch
 
+This is modification 1 of 3 in this overlay — see the top-level
+[`README.md`](../README.md) for the full list (quota tracker, Antigravity
+tool-loop breaker, CORS preflight fix).
+
 For the separately built Antigravity tool-loop circuit breaker, see
-[`tool-loop-breaker.md`](tool-loop-breaker.md). The quota overlay is hash-pinned
+[`tool-loop-breaker.md`](tool-loop-breaker.md). For the CORS preflight fix,
+see [`cors-preflight.md`](cors-preflight.md). The quota overlay is hash-pinned
 to both official 0.5.40 and the enhanced 0.5.40 circuit-breaker build. Other
 source builds fail cleanly when their chunk hashes differ.
 

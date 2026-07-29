@@ -1,5 +1,9 @@
 # Antigravity tool-loop breaker
 
+This is modification 2 of 3 in this overlay — see the top-level
+[`README.md`](../README.md) for the full list (quota tracker, Antigravity
+tool-loop breaker, CORS preflight fix).
+
 ## Problem
 
 Hermes sessions routed through 9Router to Antigravity/Gemini can repeatedly
