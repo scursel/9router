@@ -36,8 +36,10 @@ conversation state and does not change calls below the threshold.
 
 ## Apply to an upstream checkout
 
-The patch targets 9Router 0.5.40 commit
-`79918c7830695bbca4a45c9fea4a42c3e9fd73d1`.
+The original unified diff targets 9Router 0.5.40 commit
+`79918c7830695bbca4a45c9fea4a42c3e9fd73d1`. For 0.5.45 (`v0.5.45` /
+`6fcd27337a7893642c7fe630840d0a641743f28f`) the same logic was re-applied by
+hand on the `open-sse/` tree (the unified diff no longer applies cleanly).
 
 ```bash
 git clone https://github.com/decolua/9router.git

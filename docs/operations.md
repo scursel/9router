@@ -7,10 +7,10 @@ tool-loop breaker, CORS preflight fix).
 For the separately built Antigravity tool-loop circuit breaker, see
 [`tool-loop-breaker.md`](tool-loop-breaker.md). For the CORS preflight fix,
 see [`cors-preflight.md`](cors-preflight.md). The quota overlay is hash-pinned
-to both official 0.5.40 and the enhanced 0.5.40 circuit-breaker build. Other
-source builds fail cleanly when their chunk hashes differ.
+to official and enhanced builds for 0.5.35, 0.5.40, and 0.5.45 (fingerprint
+selection). Other source builds fail cleanly when their chunk hashes differ.
 
-Local compatibility patch tested with 9Router `0.5.40`.
+Local compatibility patch tested with 9Router `0.5.45`.
 
 ## Providers
 
@@ -48,13 +48,14 @@ Startup state is recorded in `~/.9router/quota-tracker-startup.status`. The
 quarantine is automatically cleared when a different 9Router version appears.
 Version-change backups are stored below `~/.9router/db/backups/pre-update-*`.
 
-Original bundles used for rollback are stored in
-`~/.9router/quota-tracker-originals/official-0.5.40/` and
-`~/.9router/quota-tracker-originals/enhanced-0.5.40/`.
+Original bundles used for rollback are stored under
+`~/.9router/quota-tracker-originals/<variant>/` (for example
+`enhanced-0.5.45/`, `official-0.5.45/`, `enhanced-0.5.40/`).
 
-The pre-update snapshot from 0.5.35, including the database, complete installed
+The pre-update snapshot from 0.5.40, including the database, complete installed
 package, patch files, launcher, checksums, and Git bundle, is stored below
-`~/.9router/db/backups/pre-npm-update-0.5.35-to-0.5.40-*`.
+`~/.9router/db/backups/pre-npm-update-0.5.40-to-0.5.45-*`. Earlier 0.5.35→0.5.40
+snapshots remain under `pre-npm-update-0.5.35-to-0.5.40-*`.
 
 The pre-fix operational backup, including the SQLite database, systemd unit,
 startup script, bundles, patchers, and checksums, is stored in

@@ -21,8 +21,10 @@ const UI_RELATIVES = new Set([
   "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-c36e962e75b41c07.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-823b8581f95ccfaa.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-c31a0e5c041fa35d.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-f53ad0a50b4418ef.js",
 ]);
-const SUPPORTED_VERSION = "0.5.40";
+const SUPPORTED_VERSION = "0.5.45";
 const UPSTREAM_CATALOG_HASHES = {
   "app/api/models/route.js": "7e150ccf2352d9457a204e87c89065a8ad81c9a3bdae1647ef6dbfab1efd9fc7",
   "app/api/provider-nodes/route.js": "a6f1767762b0b03f3a43b38c04eb9ab11fa60bf62fe9a5ac0be3b7cf8a36e1a2",
@@ -149,24 +151,92 @@ const ENHANCED_0540_CATALOG_HASHES = {
   "chunks/869.js": "2ca4ac91c7ee19c58b0b85382c912bf9ed44fbce137c507f8adcef42066fcfa0",
   "chunks/9193.js": "7fc869a05ebeff34c6b1cd85fb32fb1ebe693fd2bc2c99d4d66e82867732030a",
 };
-const CATALOG_VARIANT = fs.existsSync(path.join(
-  SERVER_ROOT,
-  "../static/chunks/app/(dashboard)/dashboard/quota/page-823b8581f95ccfaa.js",
-)) ? "enhanced-0.5.40" : "official-0.5.40";
-const CATALOG_HASHES = CATALOG_VARIANT === "enhanced-0.5.40"
-  ? ENHANCED_0540_CATALOG_HASHES
-  : OFFICIAL_0540_CATALOG_HASHES;
+const OFFICIAL_0545_CATALOG_HASHES = {
+  "../static/chunks/1321-3cb00d56de5fba92.js": "fac7771008a54cd561990d90fbb0eb32f7b911839198fed7225ac07f7c416b4e",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-c31a0e5c041fa35d.js": "f4fca04b21cf76f1bcb4c46fb912b7a0ed7a609c1721d05458b76584eb8a3ae7",
+  "app/(dashboard)/dashboard/quota/page.js": "0a86b838968876f79c1c888091d38bb510c19590e97ef4b4f8e0831ab0f51da0",
+  "app/api/provider-nodes/route.js": "542351190a5a9238e83a25eb890c2d2a8bd3f84b816fd61a7e90c89deebfcdf8",
+  "app/api/providers/client/route.js": "1c9da1e0e7805a66f608cb337aec42647d02659f318e27be37681b1697c34cdf",
+  "app/api/providers/validate/route.js": "02c5643109a40e051c01947275ce057abd9823d082f8868ca0baa5318c6ef57a",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "769dfc8e6044af3c9ac0c1278465c019adfc9cd0f9fe4381d28a22fadc65e8ba",
+  "app/api/usage/[connectionId]/route.js": "d094cbfcf17082f65976711f739574dad2b1389b8116afa24e0eb8159905c110",
+  "app/api/usage/providers/route.js": "45a620aef8f9b371387cf02eb3ade19f2e6d75943d6d58c9e19786a59a49b230",
+  "app/api/v1/audio/voices/route.js": "227be509569b035f2a111ca5470de27103c38ea91184b37065c8abd4345e6eac",
+  "app/api/v1/models/info/route.js": "40105558c89958d0559f07d70dd120b0ef4194cc64f3be9b990cf9ae472560cb",
+  "app/api/v1beta/models/route.js": "4fe662d9c2134ecc1172e4dc89247f7cc106e93b6bfe47ee92a4f0cfe1c5a6da",
+  "chunks/1829.js": "a4b34684093eed1af55db50925e29d39a0dc97d3c79d83d006cbbee0a145d5e1",
+  "chunks/615.js": "6d501294c0aa948539490ad3149920edf88e5112e0f92aa64c251b4026f743d1",
+  "chunks/7011.js": "cae83b66bf97490b75aa433a9c7867f738044b62c8b59d6e54393107eb378787",
+  "chunks/7211.js": "bde5fa92aee3323aea040d3b53aa587fb145e2ac60fde6395105abb8accf0056",
+  "chunks/827.js": "ef4995a8d7570db1223b7d010ad13e49e1ad9d9c9dd46ee4867853961f33504b",
+  "chunks/869.js": "7774c0ecdd8dd83ce7463335c7bb757762718eca4ab420e5357cb9140643ddcc",
+};
+const ENHANCED_0545_CATALOG_HASHES = {
+  "../static/chunks/1321-3cb00d56de5fba92.js": "fac7771008a54cd561990d90fbb0eb32f7b911839198fed7225ac07f7c416b4e",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-f53ad0a50b4418ef.js": "34d4ca8e33f07c5934973e97dc5f112c29d3b2bd3f991f8afebb55631a245f62",
+  "app/(dashboard)/dashboard/quota/page.js": "a0aef55bc18829d3df90c23dfe43bd7d776f0ec8c2bf2bf6ef1f68097a889961",
+  "app/api/provider-nodes/route.js": "adbae9f5f0e2c34edc85020a2e4c1d5e7f990695c405dc2b1e12f7984d275f38",
+  "app/api/providers/client/route.js": "57ff5a6e5e76410aae1128bf5e7268934f0901aa08226cb55258150920dfb27e",
+  "app/api/providers/validate/route.js": "ab241e663869aec3fb0a6e310f035b0da17bfed00b4e63e777f702438ce3f601",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "181b054c1c7b2b2875f21778e41d9493af1ad175912699840444bc031fd43643",
+  "app/api/usage/[connectionId]/route.js": "84c27d5acf7605d2cbc4d4204bece4c77158aac9e56d2bb6c64c9bd9bd93b6c0",
+  "app/api/usage/providers/route.js": "7b4b4b0567e0c7c47e3ae55a9d0d5ae424978562a38bc4990b3e2da2f23e0688",
+  "app/api/v1/audio/voices/route.js": "9e46b588441e3f2679013fe2eee52a94324dd221a3f9dda47123c9596e35785c",
+  "app/api/v1/models/info/route.js": "8293fa9de3ab94bad2d5bbe023c7dc12235c022e0508dd505ee8705f035b42cf",
+  "app/api/v1beta/models/route.js": "c12c0108198eac9939646461255da3ebd665a1ac2d06c9865d13158a82a2f112",
+  "chunks/137.js": "891a52ec721ea12ec7e949920937ea4f9607f06c9016163645a0c25e310916b9",
+  "chunks/1829.js": "a4b34684093eed1af55db50925e29d39a0dc97d3c79d83d006cbbee0a145d5e1",
+  "chunks/615.js": "6d501294c0aa948539490ad3149920edf88e5112e0f92aa64c251b4026f743d1",
+  "chunks/7211.js": "c247153650ffb38273691749bde384fd0c91c786c5b7f7fefc90ab13607dd5ad",
+  "chunks/827.js": "ef4995a8d7570db1223b7d010ad13e49e1ad9d9c9dd46ee4867853961f33504b",
+  "chunks/869.js": "7774c0ecdd8dd83ce7463335c7bb757762718eca4ab420e5357cb9140643ddcc",
+};
+// Fingerprint files are unique per official/enhanced build of each release.
+const CATALOG_VARIANTS = [
+  {
+    name: "enhanced-0.5.45",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-f53ad0a50b4418ef.js",
+    hashes: ENHANCED_0545_CATALOG_HASHES,
+  },
+  {
+    name: "official-0.5.45",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-c31a0e5c041fa35d.js",
+    hashes: OFFICIAL_0545_CATALOG_HASHES,
+  },
+  {
+    name: "enhanced-0.5.40",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-823b8581f95ccfaa.js",
+    hashes: ENHANCED_0540_CATALOG_HASHES,
+  },
+  {
+    name: "official-0.5.40",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-c36e962e75b41c07.js",
+    hashes: OFFICIAL_0540_CATALOG_HASHES,
+  },
+  {
+    name: "enhanced-0.5.35",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-f863f4ec3b739500.js",
+    hashes: ENHANCED_0535_CATALOG_HASHES,
+  },
+  {
+    name: "official-0.5.35",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-4a4e8b584d49bc4c.js",
+    hashes: OFFICIAL_0535_CATALOG_HASHES,
+  },
+];
+const SELECTED_CATALOG = CATALOG_VARIANTS.find((variant) =>
+  fs.existsSync(path.join(SERVER_ROOT, variant.fingerprint)),
+) || {
+  name: "official-0.5.45",
+  hashes: OFFICIAL_0545_CATALOG_HASHES,
+};
+const CATALOG_VARIANT = SELECTED_CATALOG.name;
+const CATALOG_HASHES = SELECTED_CATALOG.hashes;
 const ORIGINALS_DIR = path.join(__dirname, `quota-tracker-originals/${CATALOG_VARIANT}`);
 const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
-const DISPATCH_MARKER = "let V={github:";
-const GROK_RESULT_MARKER = "return{plan:i.plan,quotas:i.quotas}";
-const GROK_RESULT_PATCHED =
-  "return{plan:i.plan,quotas:i.quotas,rawConfig:i.rawConfig}";
-const GROK_EMPTY_RESULT_MARKER = "quotas:{}};return{plan:i.plan,quotas:i.quotas}";
-const GROK_EMPTY_RESULT_PATCHED =
-  "quotas:{},rawConfig:i.rawConfig};return{plan:i.plan,quotas:i.quotas}";
+// Legacy 0.5.40 marker strings kept for stripV1 cleanup helpers.
 const USAGE_ALLOW_MARKER =
   "x=d.A.filter(a=>a.features?.usage).map(a=>a.id)";
 const USAGE_ALLOW_PATCHED =
@@ -473,7 +543,7 @@ function runtimeFunctions() {
     .join("");
 }
 
-function injectedCode() {
+function injectedCode(grokFn) {
   return (
     MAIN_MARKER +
     runtimeFunctions() +
@@ -485,33 +555,63 @@ function injectedCode() {
     'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
     'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
-    'let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await M(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions)};'
+    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions)};`
   );
 }
 
 function buildUsagePatched(original) {
-  if (!original.includes(DISPATCH_MARKER)) {
+  const dispatchMatch = original.match(/let ([A-Za-z_$][\w$]*)=\{github:/);
+  if (!dispatchMatch) {
     throw new Error("9Router usage dispatch marker not found");
   }
-  const grokMarker =
-    '"grok-cli":a=>M(a.accessToken,a.providerSpecificData,a.proxyOptions)';
-  if (!original.includes(grokMarker)) {
+  const dispatchVar = dispatchMatch[1];
+  const dispatchMarker = dispatchMatch[0];
+
+  const grokMatch = original.match(
+    /"grok-cli":([A-Za-z_$][\w$]*)=>([A-Za-z_$][\w$]*)\(\1\.accessToken,\1\.providerSpecificData,\1\.proxyOptions\)/,
+  );
+  if (!grokMatch) {
     throw new Error("Native Grok usage marker not found");
   }
-  if (!original.includes(GROK_RESULT_MARKER)) {
+  const grokArg = grokMatch[1];
+  const grokFn = grokMatch[2];
+  const grokMarker = grokMatch[0];
+
+  const errorIdx = original.indexOf("Grok CLI usage error");
+  if (errorIdx < 0) {
+    throw new Error("Native Grok error marker not found");
+  }
+  const beforeError = original.slice(0, errorIdx);
+  const resultRe = /return\{plan:([A-Za-z_$][\w$]*)\.plan,quotas:\1\.quotas\}/g;
+  let resultMatch = null;
+  let m;
+  while ((m = resultRe.exec(beforeError))) resultMatch = m;
+  if (!resultMatch) {
     throw new Error("Native Grok result marker not found");
   }
-  if (!original.includes(GROK_EMPTY_RESULT_MARKER)) {
-    throw new Error("Native empty Grok result marker not found");
+  const planVar = resultMatch[1];
+  const resultMarker = `return{plan:${planVar}.plan,quotas:${planVar}.quotas}`;
+  const resultPatched = `return{plan:${planVar}.plan,quotas:${planVar}.quotas,rawConfig:${planVar}.rawConfig}`;
+
+  // 0.5.40: empty message object is closed then success return follows.
+  // 0.5.45: empty branch is a separate if/return; only the success return needs rawConfig.
+  const emptyMarker040 = `quotas:{}};return{plan:${planVar}.plan,quotas:${planVar}.quotas}`;
+  const emptyPatched040 = `quotas:{},rawConfig:${planVar}.rawConfig};return{plan:${planVar}.plan,quotas:${planVar}.quotas,rawConfig:${planVar}.rawConfig}`;
+
+  let patched = original;
+  if (patched.includes(emptyMarker040)) {
+    patched = patched.replace(emptyMarker040, emptyPatched040);
+  } else {
+    patched = patched.replace(resultMarker, resultPatched);
   }
-  return original
-    .replace(GROK_EMPTY_RESULT_MARKER, GROK_EMPTY_RESULT_PATCHED)
-    .replace(GROK_RESULT_MARKER, GROK_RESULT_PATCHED)
-    .replace(DISPATCH_MARKER, `${injectedCode()}let V={...qtpProviders,github:`)
+
+  patched = patched
+    .replace(dispatchMarker, `${injectedCode(grokFn)}let ${dispatchVar}={...qtpProviders,github:`)
     .replace(
       grokMarker,
-      '"grok-cli":async a=>qtpNormalizeXai(await M(a.accessToken,a.providerSpecificData,a.proxyOptions))',
+      `"grok-cli":async ${grokArg}=>qtpNormalizeXai(await ${grokFn}(${grokArg}.accessToken,${grokArg}.providerSpecificData,${grokArg}.proxyOptions))`,
     );
+  return patched;
 }
 
 function buildProvidersPatched(original) {
@@ -706,6 +806,7 @@ function check() {
   }).length;
   const state = {
     version: JSON.parse(fs.readFileSync(PACKAGE_JSON, "utf8")).version,
+    catalogVariant: CATALOG_VARIANT,
     usagePatched: usage.includes(MAIN_MARKER),
     catalogPatched,
     catalogTotal: Object.keys(CATALOG_HASHES).length,

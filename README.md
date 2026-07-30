@@ -17,7 +17,8 @@ bundles, account databases, API keys, OAuth tokens, or browser cookies.
 | 3 | **CORS preflight fix** | Lets browser/Electron OpenAI-compatible clients (ONLYOFFICE AI plugin, VS Code, Cursor, etc.) call 9Router over Tailscale/LAN without `Failed to fetch` on the CORS preflight. | [`patches/cors-preflight.patch.js`](patches/cors-preflight.patch.js) | [`docs/cors-preflight.md`](docs/cors-preflight.md) |
 
 Modifications 1 and 2 are applied to a fresh npm install and rebuilt into a
-private CLI tarball (see [`docs/update-0.5.40.md`](docs/update-0.5.40.md) /
+private CLI tarball (see [`docs/update-0.5.45.md`](docs/update-0.5.45.md) /
+[`docs/update-0.5.40.md`](docs/update-0.5.40.md) /
 [`docs/update-0.5.35.md`](docs/update-0.5.35.md)). Modification 3 patches the
 small, stable `app/custom-server.js` wrapper in place — no rebuild needed.
 `scripts/start-9router.sh` reapplies all three automatically on every service

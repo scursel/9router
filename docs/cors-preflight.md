@@ -43,7 +43,7 @@ for every non-OPTIONS request.
 
 Unlike `quota-tracker.patch.js`, this patch is **not** hash-pinned to a
 specific 9Router version. `app/custom-server.js` is a small, stable file
-that has been byte-identical across at least 0.5.35–0.5.40. The patcher
+that has been byte-identical across at least 0.5.35–0.5.45. The patcher
 instead verifies two anchor strings are present (`const http =
 require("http");` and `const wrapped = (req, res) => {`) before touching the
 file, and refuses to patch — leaving the file untouched — if the upstream
