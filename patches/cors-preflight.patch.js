@@ -35,7 +35,15 @@ const PACKAGE_ROOT = process.env.NINE_ROUTER_PACKAGE_ROOT ||
   path.join(HOME, ".hermes/node/lib/node_modules/9router");
 const TARGET = path.join(PACKAGE_ROOT, "app/custom-server.js");
 const BACKUP_DIR = path.join(HOME, ".9router/cors-preflight-originals");
-const BACKUP_FILE = path.join(BACKUP_DIR, "custom-server.js");
+const PACKAGE_VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8")).version || "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
+const BACKUP_FILE = path.join(BACKUP_DIR, `custom-server-${PACKAGE_VERSION}.js`);
+const LEGACY_BACKUP_FILE = path.join(BACKUP_DIR, "custom-server.js");
 
 const MARKER = "CORS headers injected on every response";
 
@@ -138,11 +146,12 @@ function apply() {
 }
 
 function rollback() {
-  if (!fs.existsSync(BACKUP_FILE)) {
+  const backupFile = fs.existsSync(BACKUP_FILE) ? BACKUP_FILE : LEGACY_BACKUP_FILE;
+  if (!fs.existsSync(backupFile)) {
     console.error("[cors-preflight] no backup found — cannot rollback");
     return false;
   }
-  const original = fs.readFileSync(BACKUP_FILE, "utf8");
+  const original = fs.readFileSync(backupFile, "utf8");
   const tmp = `${TARGET}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, original, { mode: 0o644 });
   fs.renameSync(tmp, TARGET);

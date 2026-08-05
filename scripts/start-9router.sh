@@ -12,6 +12,8 @@ else
 fi
 PATCH="$HOME/.9router/quota-tracker.patch.js"
 CORS_PATCH="$HOME/.9router/cors-preflight.patch.js"
+TOOL_LOOP_PATCH="$HOME/.9router/antigravity-tool-loop-breaker.patch"
+WAN_IMAGE_PATCH="$HOME/.9router/wan-image.patch.js"
 DB="$HOME/.9router/db/data.sqlite"
 BACKUP_ROOT="$HOME/.9router/db/backups"
 VERSION_STATE="$HOME/.9router/quota-tracker-version"
@@ -46,6 +48,7 @@ backup_on_version_change() {
   cp "$APP_ROOT/package.json" "$backup_dir/package.json"
   cp "$PATCH" "$HOME/.9router/quota-tracker.test.js" "$0" "$backup_dir/"
   [[ -f "$CORS_PATCH" ]] && cp "$CORS_PATCH" "$backup_dir/"
+  [[ -f "$TOOL_LOOP_PATCH" ]] && cp "$TOOL_LOOP_PATCH" "$backup_dir/"
   chmod 600 "$backup_dir"/*
   printf '%s\n' "$CURRENT_VERSION" >"${VERSION_STATE}.$$"
   chmod 600 "${VERSION_STATE}.$$"
@@ -88,6 +91,17 @@ if [[ -f "$CORS_PATCH" ]]; then
   else
     echo "[cors-preflight] apply failed; custom-server.js left untouched, continuing without it" >&2
     echo "$CORS_OUTPUT" >&2
+  fi
+fi
+
+if [[ -f "$WAN_IMAGE_PATCH" ]]; then
+  if WAN_OUTPUT="$(node "$WAN_IMAGE_PATCH" --apply 2>&1)"; then
+    echo "$WAN_OUTPUT"
+  else
+    echo "[wan-image] adapter patch failed; refusing to start an unpatched router" >&2
+    echo "$WAN_OUTPUT" >&2
+    write_status "wan-image-patch-failed"
+    exit 1
   fi
 fi
 

@@ -43,7 +43,7 @@ for every non-OPTIONS request.
 
 Unlike `quota-tracker.patch.js`, this patch is **not** hash-pinned to a
 specific 9Router version. `app/custom-server.js` is a small, stable file
-that has been byte-identical across at least 0.5.35–0.5.45. The patcher
+that has remained structurally compatible across at least 0.5.35–0.5.50. The patcher
 instead verifies two anchor strings are present (`const http =
 require("http");` and `const wrapped = (req, res) => {`) before touching the
 file, and refuses to patch — leaving the file untouched — if the upstream
@@ -58,9 +58,10 @@ node ~/.9router/cors-preflight.patch.js --rollback
 node tests/cors-preflight.test.js
 ```
 
-The original `custom-server.js` is backed up once, on first apply, to
-`~/.9router/cors-preflight-originals/custom-server.js` and restored verbatim
-by `--rollback`.
+The original `custom-server.js` is backed up once per package version, on first
+apply, to `~/.9router/cors-preflight-originals/custom-server-<version>.js` and
+restored verbatim by `--rollback`. Older installations using
+`custom-server.js` as the backup name remain supported.
 
 ## Verification (manual, against the live 100.115.118.6:20128 instance)
 

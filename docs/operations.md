@@ -7,10 +7,12 @@ tool-loop breaker, CORS preflight fix).
 For the separately built Antigravity tool-loop circuit breaker, see
 [`tool-loop-breaker.md`](tool-loop-breaker.md). For the CORS preflight fix,
 see [`cors-preflight.md`](cors-preflight.md). The quota overlay is hash-pinned
-to official and enhanced builds for 0.5.35, 0.5.40, and 0.5.45 (fingerprint
-selection). Other source builds fail cleanly when their chunk hashes differ.
+to the official 0.5.50 build and official/enhanced builds for 0.5.35, 0.5.40,
+and 0.5.45 (fingerprint selection). Other source builds fail cleanly when
+their chunk hashes differ.
 
-Local compatibility patch tested with 9Router `0.5.45`.
+Local compatibility patch tested with 9Router `0.5.50`; existing 0.5.35–0.5.45
+catalogs remain supported.
 
 ## Providers
 

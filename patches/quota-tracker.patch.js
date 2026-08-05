@@ -23,8 +23,10 @@ const UI_RELATIVES = new Set([
   "../static/chunks/app/(dashboard)/dashboard/quota/page-823b8581f95ccfaa.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-c31a0e5c041fa35d.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-f53ad0a50b4418ef.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-14020782e8f3bc6b.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js",
 ]);
-const SUPPORTED_VERSION = "0.5.45";
+const SUPPORTED_VERSIONS = new Set(["0.5.35", "0.5.40", "0.5.45", "0.5.50"]);
 const UPSTREAM_CATALOG_HASHES = {
   "app/api/models/route.js": "7e150ccf2352d9457a204e87c89065a8ad81c9a3bdae1647ef6dbfab1efd9fc7",
   "app/api/provider-nodes/route.js": "a6f1767762b0b03f3a43b38c04eb9ab11fa60bf62fe9a5ac0be3b7cf8a36e1a2",
@@ -191,8 +193,62 @@ const ENHANCED_0545_CATALOG_HASHES = {
   "chunks/827.js": "ef4995a8d7570db1223b7d010ad13e49e1ad9d9c9dd46ee4867853961f33504b",
   "chunks/869.js": "7774c0ecdd8dd83ce7463335c7bb757762718eca4ab420e5357cb9140643ddcc",
 };
+const OFFICIAL_0550_CATALOG_HASHES = {
+  "../static/chunks/1321-54939b699b5f3d07.js": "7d30d205a156971125ed575166de3df19ff97570e67c0e905800d53069b8536d",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-14020782e8f3bc6b.js": "dd2b35436c4bb20dd82272918978c2c7175f858d5dd96d0f6c1f3384d158dbfb",
+  "app/(dashboard)/dashboard/quota/page.js": "ff8745d50baaf185ba46e4827a4a698bd574ecb80b36afc8e0884916ac2278ca",
+  "app/api/provider-nodes/route.js": "190cc33d2ad712f57fa50ab6ff46f878b09a86b82717d58f0d1b0757314e4b32",
+  "app/api/providers/client/route.js": "a0d305e0cad2cc8584b7fd8c3229135b876626f439b5335ce59d7f4c11adff83",
+  "app/api/providers/validate/route.js": "6d47e58e09a5b0ba009cb02c96ebb4ab9eac39adfa304d1c3827b45489e4e831",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "c00bf7c20c117b73fc0c2677523bac2ace79650fe2f186d3072cc7cc4e0da8c7",
+  "app/api/usage/[connectionId]/route.js": "da2036a8b76500b9355021e56d6e7257de22870fdc9878f4c5266e45e892e946",
+  "app/api/usage/providers/route.js": "b05a8706aa4d7129c2e13079932d19fe46e39fc4cd2ae72500986a36e20e98de",
+  "app/api/v1/audio/voices/route.js": "4577ec2c2b30876c019df6e803f239824664bf7eef169c1a9fbffe835244b0f1",
+  "app/api/v1/models/info/route.js": "6fe06fc90c8609be920838fa012878e719e9d1b12ca0e467da4315eb55417a14",
+  "app/api/v1beta/models/route.js": "0a8327f3f287cd2aca29661d241e54dd12761272e64be019005e2066b23545c0",
+  "chunks/4664.js": "7924627d1ec3d2f9f0fea16fa2bd4b88f471de415c4e9ae69cf732cbff00c5ee",
+  "chunks/5619.js": "b1107aed705bc1704a5fb6c6ada646c51eafe47c56c1ca986ba997438b77ca3f",
+  "chunks/615.js": "bfd8435754e8bcb52d6824191d0070ef89842aa4078161a09bab3860374fff7e",
+  "chunks/7011.js": "148c665aa9c826e244a6ebff3b4de37fbdbdedd0415e162525aad853b8dcdc71",
+  "chunks/7211.js": "5a8e7061cda779abd7a279989db419dad362d6393373a0cc0aa0421a35e091d0",
+  "chunks/827.js": "0608c99028f03a66f8b135670936a57f6eeb8cc3125e684e32e2ff6f413658c8",
+  "chunks/869.js": "53b6231711cd75add1216e016399c80b150b79846530a38fabbe622921af3f1b",
+  "chunks/8847.js": "557e988bea8cba14a5e8cde8f7a634cb2dc4b5f2f2edc44f778e98481e807db7",
+};
+const ENHANCED_0550_CATALOG_HASHES = {
+  "../static/chunks/1321-54939b699b5f3d07.js": "7d30d205a156971125ed575166de3df19ff97570e67c0e905800d53069b8536d",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js": "743661551bc5a8f676412cdd55499d1b248ee9218c174101f4cca53548ba826c",
+  "app/(dashboard)/dashboard/quota/page.js": "cbd82ee7b0d097784fb65ee084f32993404159a40fe7075e3c44214ba66c01c8",
+  "app/api/provider-nodes/route.js": "76cd242cbafbdda07059bbbbf4bfc3f0323943ed9e4cd9a9a8ad7be190676c6a",
+  "app/api/providers/client/route.js": "8c48f57a886d845c0e153286934313287c807a7110a2470c692e1cd2446702ab",
+  "app/api/providers/validate/route.js": "e86a2b8c7aeff19f4bafccb34f417b1fd71fa8452998ee91705df8c2ab3d01ab",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "060616d4a31e722e1638ace7c5ef8b3ea88d48a1a00d40665e8ba6e682844273",
+  "app/api/usage/[connectionId]/route.js": "c66e5cc5c516eed98f97dd9a79f9d80bc307b6ffb80ca25e58c73477bee4a037",
+  "app/api/usage/providers/route.js": "c9b57c13587362a5d90ad3b83dab0d78189c3f3a01f3d02ceb8499592a6b80a4",
+  "app/api/v1/audio/voices/route.js": "617314684a72adff457d865574a864dfae988446eda5a7ba961bac8d1f0ab26e",
+  "app/api/v1/models/info/route.js": "439fd261ca4c5acc47ab3a452fc2ff0fb497e711da895be6da4f209abfcf5e20",
+  "app/api/v1beta/models/route.js": "29726f3117ef30bd5b71ef1a3662ddf319268ba0e9eea6ada4bea9da1f74cdd7",
+  "chunks/4664.js": "7924627d1ec3d2f9f0fea16fa2bd4b88f471de415c4e9ae69cf732cbff00c5ee",
+  "chunks/5619.js": "b1107aed705bc1704a5fb6c6ada646c51eafe47c56c1ca986ba997438b77ca3f",
+  "chunks/615.js": "bfd8435754e8bcb52d6824191d0070ef89842aa4078161a09bab3860374fff7e",
+  "chunks/4695.js": "384c4efe328c71934954b6b34aa6f1bb42a90340abbd56e47b17022a2a584baf",
+  "chunks/7211.js": "adf7d6d0ad78d284339c22d3aa43f54055373525e2c4782cee291acf2bdc2d59",
+  "chunks/827.js": "0608c99028f03a66f8b135670936a57f6eeb8cc3125e684e32e2ff6f413658c8",
+  "chunks/869.js": "53b6231711cd75add1216e016399c80b150b79846530a38fabbe622921af3f1b",
+  "chunks/8847.js": "f4388200a63b4b29177f79726a6f89b72a1aa33cde9c78cb12963e57ed80b723",
+};
 // Fingerprint files are unique per official/enhanced build of each release.
 const CATALOG_VARIANTS = [
+  {
+    name: "enhanced-0.5.50",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js",
+    hashes: ENHANCED_0550_CATALOG_HASHES,
+  },
+  {
+    name: "official-0.5.50",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-14020782e8f3bc6b.js",
+    hashes: OFFICIAL_0550_CATALOG_HASHES,
+  },
   {
     name: "enhanced-0.5.45",
     fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-f53ad0a50b4418ef.js",
@@ -227,8 +283,8 @@ const CATALOG_VARIANTS = [
 const SELECTED_CATALOG = CATALOG_VARIANTS.find((variant) =>
   fs.existsSync(path.join(SERVER_ROOT, variant.fingerprint)),
 ) || {
-  name: "official-0.5.45",
-  hashes: OFFICIAL_0545_CATALOG_HASHES,
+  name: "official-0.5.50",
+  hashes: OFFICIAL_0550_CATALOG_HASHES,
 };
 const CATALOG_VARIANT = SELECTED_CATALOG.name;
 const CATALOG_HASHES = SELECTED_CATALOG.hashes;
@@ -501,9 +557,9 @@ function atomicWrite(file, content) {
 
 function assertVersion() {
   const version = JSON.parse(fs.readFileSync(PACKAGE_JSON, "utf8")).version;
-  if (version !== SUPPORTED_VERSION) {
+  if (!SUPPORTED_VERSIONS.has(version)) {
     console.error(
-      `[quota-tracker] 9Router ${version} differs from tested ${SUPPORTED_VERSION}; verifying bundle compatibility.`,
+      `[quota-tracker] 9Router ${version} differs from tested ${[...SUPPORTED_VERSIONS].join(", ")}; verifying bundle compatibility.`,
     );
   }
   return version;
@@ -616,9 +672,9 @@ function buildUsagePatched(original) {
 
 function buildProvidersPatched(original) {
   const usagePattern =
-    /([A-Za-z_$][\w$]*\.A\.filter\(([A-Za-z_$][\w$]*)=>\2\.features\?\.usage\)\.map\(\2=>\2\.id\))/;
+    /((?:[A-Za-z_$][\w$]*\.)+filter\(([A-Za-z_$][\w$]*)=>\2\.features\?\.usage\)\.map\(\2=>\2\.id\))/;
   const apiKeyPattern =
-    /([A-Za-z_$][\w$]*\.A\.filter\(([A-Za-z_$][\w$]*)=>\2\.features\?\.usageApikey\)\.map\(\2=>\2\.id\))/;
+    /((?:[A-Za-z_$][\w$]*\.)+filter\(([A-Za-z_$][\w$]*)=>\2\.features\?\.usageApikey\)\.map\(\2=>\2\.id\))/;
   if (!usagePattern.test(original)) {
     throw new Error("Provider client usage allow-list marker not found");
   }
@@ -799,9 +855,11 @@ function sanitize() {
 }
 
 function check() {
-  const usage = fs.readFileSync(USAGE_CHUNK, "utf8");
+  const usage = fs.existsSync(USAGE_CHUNK) ? fs.readFileSync(USAGE_CHUNK, "utf8") : "";
   const catalogPatched = Object.keys(CATALOG_HASHES).filter((relative) => {
-    const content = fs.readFileSync(path.join(SERVER_ROOT, relative), "utf8");
+    const file = path.join(SERVER_ROOT, relative);
+    if (!fs.existsSync(file)) return false;
+    const content = fs.readFileSync(file, "utf8");
     return content.includes(markerFor(relative));
   }).length;
   const state = {

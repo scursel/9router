@@ -40,6 +40,9 @@ The original unified diff targets 9Router 0.5.40 commit
 `79918c7830695bbca4a45c9fea4a42c3e9fd73d1`. For 0.5.45 (`v0.5.45` /
 `6fcd27337a7893642c7fe630840d0a641743f28f`) the same logic was re-applied by
 hand on the `open-sse/` tree (the unified diff no longer applies cleanly).
+For 0.5.50, use the separately generated
+`patches/antigravity-tool-loop-breaker-0.5.50.patch`; it applies cleanly to
+`v0.5.50` and was validated against the upstream Antigravity regression suite.
 
 ```bash
 git clone https://github.com/decolua/9router.git
@@ -114,3 +117,6 @@ The quota overlay is hash-pinned to the enhanced 0.5.40 build produced with
 Next.js 16.2.10. The catalog was regenerated after the circuit-breaker build and
 validates all 18 target bundles. Unknown builds still fail closed and start
 without modifying bundles.
+
+The 0.5.50 quota catalog is documented separately in
+[`update-0.5.50.md`](update-0.5.50.md).

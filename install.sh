@@ -20,6 +20,8 @@ install -m 755 "$ROOT/tests/quota-tracker.test.js" "$PATCH_DIR/quota-tracker.tes
 install -m 644 "$ROOT/docs/operations.md" "$PATCH_DIR/quota-tracker.README.md"
 install -m 755 "$ROOT/patches/cors-preflight.patch.js" "$PATCH_DIR/cors-preflight.patch.js"
 install -m 644 "$ROOT/docs/cors-preflight.md" "$PATCH_DIR/cors-preflight.README.md"
+install -m 644 "$ROOT/patches/antigravity-tool-loop-breaker.patch" "$PATCH_DIR/antigravity-tool-loop-breaker.patch"
+install -m 644 "$ROOT/patches/antigravity-tool-loop-breaker-0.5.50.patch" "$PATCH_DIR/antigravity-tool-loop-breaker-0.5.50.patch"
 install -m 755 "$ROOT/scripts/start-9router.sh" "$SCRIPT_DIR/start-9router.sh"
 install -m 644 "$ROOT/systemd/9router.service" "$SYSTEMD_DIR/9router.service"
 

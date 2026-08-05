@@ -17,13 +17,16 @@ bundles, account databases, API keys, OAuth tokens, or browser cookies.
 | 3 | **CORS preflight fix** | Lets browser/Electron OpenAI-compatible clients (ONLYOFFICE AI plugin, VS Code, Cursor, etc.) call 9Router over Tailscale/LAN without `Failed to fetch` on the CORS preflight. | [`patches/cors-preflight.patch.js`](patches/cors-preflight.patch.js) | [`docs/cors-preflight.md`](docs/cors-preflight.md) |
 
 Modifications 1 and 2 are applied to a fresh npm install and rebuilt into a
-private CLI tarball (see [`docs/update-0.5.45.md`](docs/update-0.5.45.md) /
+private CLI tarball (see [`docs/update-0.5.50.md`](docs/update-0.5.50.md) /
+[`docs/update-0.5.45.md`](docs/update-0.5.45.md) /
 [`docs/update-0.5.40.md`](docs/update-0.5.40.md) /
 [`docs/update-0.5.35.md`](docs/update-0.5.35.md)). Modification 3 patches the
 small, stable `app/custom-server.js` wrapper in place — no rebuild needed.
-`scripts/start-9router.sh` reapplies all three automatically on every service
-start (see [Update guard](#update-guard) below), so a routine `npm update`
-that resets the installed package does not silently drop any of them.
+`scripts/start-9router.sh` reapplies the two runtime patches (quota/CORS) on
+every service start (see [Update guard](#update-guard) below). The Antigravity
+breaker is compiled into the private CLI tarball and must be re-applied to the
+source before each source-level rebuild, so a routine `npm update` is not a
+safe upgrade path.
 
 ---
 
@@ -80,6 +83,11 @@ as a private CLI tarball; see
 [`docs/tool-loop-breaker.md`](docs/tool-loop-breaker.md) for the build steps,
 regression evidence (before/after streaming traces), and rollback.
 
+For upstream `0.5.50`, use the separately ported source diff
+[`patches/antigravity-tool-loop-breaker-0.5.50.patch`](patches/antigravity-tool-loop-breaker-0.5.50.patch).
+The original diff no longer applies because upstream changed the same
+translator files after `0.5.45`.
+
 ## 3. CORS preflight fix
 
 Browser/Electron clients calling 9Router over Tailscale or any non-loopback
@@ -98,9 +106,10 @@ every other response so genuine auth failures (401/403) stay readable to the
 browser instead of surfacing as an opaque network error.
 
 Unlike the quota tracker, this patch is **not** hash-pinned to a specific
-9Router version — `custom-server.js` has been byte-identical across at least
-0.5.35–0.5.40, so the patcher verifies two anchor strings instead and refuses
-to touch the file if the upstream shape changes.
+9Router version — `custom-server.js` remains structurally compatible across
+0.5.35–0.5.50, so the patcher verifies two anchor strings instead and refuses
+to touch the file if the upstream shape changes. The 0.5.50 upstream h2c
+downgrade handling is preserved.
 
 ```bash
 node ~/.9router/cors-preflight.patch.js --check
@@ -116,8 +125,8 @@ in [`docs/cors-preflight.md`](docs/cors-preflight.md).
 
 ## Compatibility
 
-The quota tracker is tested against both the official and enhanced 9Router
-`0.5.40` builds. A different version is accepted only when every target
+The quota tracker is tested against the official `0.5.50` build and the
+official/enhanced `0.5.35`, `0.5.40`, and `0.5.45` builds. A different version is accepted only when every target
 bundle is byte-compatible with a tested build; an incompatible update is left
 untouched and starts as clean upstream 9Router. The CORS preflight fix uses
 anchor detection instead of hashes and tolerates any 9Router version whose
