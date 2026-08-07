@@ -1,0 +1,15 @@
+{
+  "code": 200,
+  "data": {
+    "DataV2": {
+      "data": {
+        "data": {
+          "per5HourPercentage": 0.37,
+          "per5HourResetTime": 1786150800000,
+          "per1WeekPercentage": 0.12,
+          "per1WeekResetTime": 1786579200000
+        }
+      }
+    }
+  }
+}

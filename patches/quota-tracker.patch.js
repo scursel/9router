@@ -292,15 +292,112 @@ const ORIGINALS_DIR = path.join(__dirname, `quota-tracker-originals/${CATALOG_VA
 const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
+const PROVIDER_CATALOG_MARKER = "/* QuotaTrackerAlibabaProvider:v1 */";
+const UI_STATUS_MARKER = "/* QuotaTrackerAlibabaStatus:v1 */";
+const LEGACY_MARKERS = [
+  "/* QuotaTrackerPatch:v2 */",
+  "/* QuotaTrackerProviders:v2 */",
+  "/* QuotaTrackerCurrency:v2 */",
+];
+
+const CANONICAL_PROVIDER = {
+  id: "qwen-cloud-token-plan",
+  alias: "qct",
+  display: {
+    name: "Qwen Cloud Token Plan",
+    icon: "cloud",
+    color: "#FF6A00",
+    textIcon: "QCT",
+    website: "https://www.alibabacloud.com/help/en/model-studio/token-plan-overview",
+  },
+  category: "apikey",
+  transport: {
+    format: "openai",
+    baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+    auth: { combined: true, header: "Authorization", scheme: "bearer" },
+  },
+  models: [
+    { id: "qwen3.8-max-preview", name: "Qwen3.8 Max Preview", supportsReasoning: true, supportsVision: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 65536 },
+    { id: "qwen3.7-max", name: "Qwen3.7 Max", supportsReasoning: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 65536 },
+    { id: "qwen3.7-plus", name: "Qwen3.7 Plus", supportsReasoning: true, supportsVision: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 65536 },
+    { id: "qwen3.6-flash", name: "Qwen3.6 Flash", supportsReasoning: true, supportsVision: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 32768 },
+    { id: "glm-5.2", name: "GLM 5.2", supportsReasoning: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 16384 },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", supportsReasoning: true, toolCalling: true, contextLength: 163840, maxOutputTokens: 32768 },
+  ],
+  features: { usage: true, usageApikey: true },
+};
+
+function buildProviderCatalogPatched(original) {
+  if (original.includes(PROVIDER_CATALOG_MARKER)) return original;
+
+  // Server bundles that embed module 40615.
+  const catalogModuleIdx = original.indexOf("40615:(");
+  const serverRequireMatch =
+    catalogModuleIdx >= 0
+      ? original.slice(catalogModuleIdx).match(/var d=c\(\d+\);/)
+      : null;
+  if (serverRequireMatch) {
+    const serverEntry = JSON.stringify(CANONICAL_PROVIDER);
+    const injectCode = `{let a=${serverEntry};d.A.some(b=>b.id===a.id)||d.A.push(a);}`;
+    const insertAt =
+      catalogModuleIdx + serverRequireMatch.index + serverRequireMatch[0].length;
+    return (
+      original.slice(0, insertAt) +
+      injectCode +
+      original.slice(insertAt) +
+      PROVIDER_CATALOG_MARKER
+    );
+  }
+
+  // Client chunk 1321-*.js
+  const anchorIdx = original.indexOf('id:"alicode-intl"');
+  if (anchorIdx >= 0) {
+    let arrStart = -1;
+    for (let i = anchorIdx; i >= 0; i--) {
+      if (original[i] === "[" && (original[i - 1] === "=" || original[i - 1] === ":")) {
+        arrStart = i;
+        break;
+      }
+    }
+    if (arrStart < 0) {
+      throw new Error("Client provider array opening delimiter not found");
+    }
+    let depth = 0;
+    let arrEnd = -1;
+    for (let i = arrStart; i < original.length; i++) {
+      if (original[i] === "[") depth++;
+      else if (original[i] === "]") {
+        depth--;
+        if (depth === 0) {
+          arrEnd = i;
+          break;
+        }
+      }
+    }
+    if (arrEnd < 0) {
+      throw new Error("Client provider array closing delimiter not found");
+    }
+    const clientEntry = JSON.stringify(CANONICAL_PROVIDER);
+    return (
+      original.slice(0, arrEnd) +
+      "," +
+      clientEntry +
+      original.slice(arrEnd) +
+      PROVIDER_CATALOG_MARKER
+    );
+  }
+
+  throw new Error("Target chunk for provider catalog patch not recognized");
+}
 // Legacy 0.5.40 marker strings kept for stripV1 cleanup helpers.
 const USAGE_ALLOW_MARKER =
   "x=d.A.filter(a=>a.features?.usage).map(a=>a.id)";
 const USAGE_ALLOW_PATCHED =
-  'x=[...new Set([...d.A.filter(a=>a.features?.usage).map(a=>a.id),"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass"])]';
+  'x=[...new Set([...d.A.filter(a=>a.features?.usage).map(a=>a.id),"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"])]';
 const API_KEY_ALLOW_MARKER =
   "y=d.A.filter(a=>a.features?.usageApikey).map(a=>a.id)";
 const API_KEY_ALLOW_PATCHED =
-  'y=[...new Set([...d.A.filter(a=>a.features?.usageApikey).map(a=>a.id),"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass"])]';
+  'y=[...new Set([...d.A.filter(a=>a.features?.usageApikey).map(a=>a.id),"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"])]';
 
 function qtpNum(value, fallback = NaN) {
   const number = Number(value);
@@ -308,10 +405,12 @@ function qtpNum(value, fallback = NaN) {
 }
 
 function qtpReset(value) {
-  if (!value || Number(value) === 0) return null;
-  const date = new Date(
-    typeof value === "number" && value < 1e12 ? value * 1000 : value,
-  );
+  if (!value || typeof value === "boolean" || Array.isArray(value)) return null;
+  if (typeof value === "object" && !(value instanceof Date)) return null;
+  if (Number(value) === 0) return null;
+  const num = Number(value);
+  const val = Number.isFinite(num) ? (num < 1e12 ? num * 1000 : num) : value;
+  const date = new Date(val);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
@@ -545,6 +644,205 @@ function qtpParseCline(planBody, usageItems, now = Date.now()) {
   };
 }
 
+function qtpAlibabaPercent(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "boolean") return null;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed === "") return null;
+    const num = Number(trimmed);
+    return Number.isFinite(num) ? num : null;
+  }
+  return null;
+}
+
+function qtpFindAlibabaUsage(source, now = Date.now()) {
+  if (!source || typeof source !== "object") return null;
+  const dataObj = source?.data?.DataV2?.data?.data;
+  if (!dataObj || typeof dataObj !== "object" || Array.isArray(dataObj)) return null;
+
+  const has5Hour = "per5HourPercentage" in dataObj || "per5HourResetTime" in dataObj;
+  const has1Week = "per1WeekPercentage" in dataObj || "per1WeekResetTime" in dataObj;
+  if (!has5Hour && !has1Week) return null;
+
+  return {
+    fiveHour: {
+      percentage: dataObj.per5HourPercentage,
+      resetTime: dataObj.per5HourResetTime,
+    },
+    sevenDay: {
+      percentage: dataObj.per1WeekPercentage,
+      resetTime: dataObj.per1WeekResetTime,
+    },
+  };
+}
+
+function qtpAlibabaWindow(windowData, now = Date.now()) {
+  if (!windowData || typeof windowData !== "object") return null;
+  const num = qtpAlibabaPercent(windowData.percentage);
+  if (num === null) return null;
+
+  const resetAt = qtpReset(windowData.resetTime);
+  if (!resetAt) return null;
+
+  const pct = num >= 0 && num <= 1 ? num * 100 : num;
+  const used = Math.min(100, Math.max(0, Math.round(pct * 1000000) / 1000000));
+
+  return qtpQuota(used, 100, resetAt);
+}
+
+function qtpParseAlibabaTokenPlan(body, now = Date.now()) {
+  const source = body && typeof body === "object" ? body : null;
+  const usage = qtpFindAlibabaUsage(source, now);
+  if (!usage) return null;
+
+  const fiveHour = qtpAlibabaWindow(usage.fiveHour, now);
+  const sevenDay = qtpAlibabaWindow(usage.sevenDay, now);
+  if (!fiveHour || !sevenDay) return null;
+
+  return {
+    plan: "Alibaba Token Plan",
+    quotas: {
+      "5 hour window (%)": fiveHour,
+      "7 day window (%)": sevenDay,
+    },
+  };
+}
+
+const qtpAlibabaCache = new Map();
+
+function qtpSafeAlibabaReason(error) {
+  const msg = String(error?.message || error || "");
+  if (msg.includes("session unavailable")) return "session unavailable";
+  if (msg.includes("authentication failed") || msg.includes("401") || msg.includes("403")) {
+    return "authentication failed";
+  }
+  return "quota unavailable";
+}
+
+async function qtpFetchAlibabaPayload(fetcher, cookie, secToken) {
+  const url =
+    "https://cs-data.qwencloud.com/data/api.json?action=IntlBroadScopeAspnGateway&product=sfm_bailian&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage&_v=undefined";
+  const feTraceId =
+    typeof crypto !== "undefined" && typeof crypto.randomBytes === "function"
+      ? crypto.randomBytes(16).toString("hex")
+      : Date.now().toString(36) + Math.random().toString(36).substring(2);
+  const body = new URLSearchParams({
+    product: "sfm_bailian",
+    action: "IntlBroadScopeAspnGateway",
+    sec_token: secToken,
+    region: "ap-southeast-1",
+    language: "en-US",
+    params: JSON.stringify({
+      Api: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
+      V: "1.0",
+      Data: {
+        cornerstoneParam: {
+          feTraceId,
+          feURL: "https://home.qwencloud.com/billing/subscription/token-plan-individual",
+          protocol: "V2",
+          console: "ONE_CONSOLE",
+          productCode: "p_efm",
+          domain: "home.qwencloud.com",
+          consoleSite: "QWENCLOUD",
+          userNickName: "",
+          userPrincipalName: "",
+          xsp_lang: "en-US",
+        },
+      },
+    }),
+  }).toString();
+
+  let res;
+  try {
+    res = await fetcher(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cookie": cookie,
+        "Referer": "https://home.qwencloud.com/billing/subscription/token-plan-individual",
+        "Origin": "https://home.qwencloud.com",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/plain, */*",
+      },
+      body,
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (err) {
+    throw new Error("quota unavailable");
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error("authentication failed");
+  }
+  if (!res.ok) {
+    throw new Error("quota unavailable");
+  }
+
+  try {
+    return await res.json();
+  } catch (err) {
+    throw new Error("quota unavailable");
+  }
+}
+
+async function qtpFetchAlibabaTokenPlan(fetcher, cache, env, now = Date.now()) {
+  const cookie = String(env?.ALIBABA_TOKEN_PLAN_QUOTA_COOKIE || "").trim();
+  const secToken = String(env?.ALIBABA_TOKEN_PLAN_SEC_TOKEN || "").trim();
+  if (!cookie || !secToken) {
+    return { status: "unavailable", source: "alibaba-console", reason: "session unavailable" };
+  }
+
+  const cached = cache.get("qwen-cloud-token-plan");
+  if (cached && now - cached.fetchedAt < 60_000) {
+    return { ...cached.value, status: "ok" };
+  }
+
+  try {
+    const payload = await qtpFetchAlibabaPayload(fetcher, cookie, secToken);
+    const parsed = qtpParseAlibabaTokenPlan(payload, now);
+    if (!parsed) throw new Error("quota unavailable");
+    const value = {
+      ...parsed,
+      status: "ok",
+      source: "alibaba-console",
+      fetchedAt: new Date(now).toISOString(),
+    };
+    cache.set("qwen-cloud-token-plan", { value, fetchedAt: now });
+    return value;
+  } catch (error) {
+    if (cached && now - cached.fetchedAt <= 300_000) {
+      return { ...cached.value, status: "stale" };
+    }
+    return {
+      status: "unavailable",
+      source: "alibaba-console",
+      reason: qtpSafeAlibabaReason(error),
+    };
+  }
+}
+
+async function qtpAlibaba(a) {
+  const res = await qtpFetchAlibabaTokenPlan(
+    (url, init) => (0, d.proxyAwareFetch)(url, init, a.proxyOptions),
+    qtpAlibabaCache,
+    process.env,
+    Date.now(),
+  );
+  if (res && res.status === "unavailable") {
+    return {
+      message: "Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",
+      quotas: {},
+      status: "unavailable",
+      source: "alibaba-console",
+      reason: res.reason,
+    };
+  }
+  return res;
+}
 function hash(content) {
   return crypto.createHash("sha256").update(content).digest("hex");
 }
@@ -594,6 +892,13 @@ function runtimeFunctions() {
     qtpNormalizeXai,
     qtpParseMimo,
     qtpParseCline,
+    qtpAlibabaPercent,
+    qtpFindAlibabaUsage,
+    qtpAlibabaWindow,
+    qtpParseAlibabaTokenPlan,
+    qtpSafeAlibabaReason,
+    qtpFetchAlibabaPayload,
+    qtpFetchAlibabaTokenPlan,
   ]
     .map((fn) => fn.toString())
     .join("");
@@ -602,6 +907,7 @@ function runtimeFunctions() {
 function injectedCode(grokFn) {
   return (
     MAIN_MARKER +
+    'let qtpAlibabaCache=new Map();' +
     runtimeFunctions() +
     'async function qtpGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Authorization:"Bearer "+b,Accept:"application/json"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'function qtpError(a,b){return{message:b+" quota API "+(a.status?"error ("+a.status+").":a.error+"."),quotas:{}}}' +
@@ -611,7 +917,8 @@ function injectedCode(grokFn) {
     'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
     'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
-    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions)};`
+    'async function qtpAlibaba(a){let b=await qtpFetchAlibabaTokenPlan((u,i)=>(0,d.proxyAwareFetch)(u,i,a.proxyOptions),qtpAlibabaCache,process.env,Date.now());return b&&"unavailable"===b.status?{message:"Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",quotas:{},status:"unavailable",source:"alibaba-console",reason:b.reason}:b}' +
+    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a)};`
   );
 }
 
@@ -682,9 +989,9 @@ function buildProvidersPatched(original) {
     throw new Error("Provider client allow-list marker not found");
   }
   const usageProviders =
-    '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass"';
+    '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"';
   const apiKeyProviders =
-    '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass"';
+    '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"';
   return original
     .replace(usagePattern, (expression) =>
       `[...new Set([...${expression},${usageProviders}])]`)
@@ -693,7 +1000,8 @@ function buildProvidersPatched(original) {
     + PROVIDERS_MARKER;
 }
 
-function buildUiPatched(original) {
+function buildLegacyUiPatched(original) {
+  if (original.includes(UI_MARKER)) return original;
   const matches = [
     {
       old: 'children:[a.used.toLocaleString()," / ",a.total>0?a.total.toLocaleString():"∞"]',
@@ -713,15 +1021,69 @@ function buildUiPatched(original) {
   return original.replace(match.old, match.replacement);
 }
 
-function markerFor(relative) {
+function buildUiPatched(original) {
+  if (original.includes(UI_STATUS_MARKER)) return original;
+  let result = buildLegacyUiPatched(original);
+  const matches = [
+    {
+      old:
+        'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})',
+      replacement:
+        'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsxs)("div",{children:[i?.raw?.source?(0,d.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${i.raw.source} · ${i.raw.status||"ok"} · ${i.raw.fetchedAt||""}`}):null,(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})]})' +
+        UI_STATUS_MARKER,
+    },
+    {
+      old:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(w,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})',
+      replacement:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsxs)("div",{children:[o?.raw?.source?(0,a.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${o.raw.source} · ${o.raw.status||"ok"} · ${o.raw.fetchedAt||""}`}):null,(0,a.jsx)(w,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})]})' +
+        UI_STATUS_MARKER,
+    },
+    {
+      old:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(k,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})',
+      replacement:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsxs)("div",{children:[o?.raw?.source?(0,a.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${o.raw.source} · ${o.raw.status||"ok"} · ${o.raw.fetchedAt||""}`}):null,(0,a.jsx)(k,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})]})' +
+        UI_STATUS_MARKER,
+    },
+  ];
+  const matched = matches.filter(({ old }) => result.includes(old));
+  if (
+    matched.length !== 1 ||
+    result.indexOf(matched[0].old) !== result.lastIndexOf(matched[0].old)
+  ) {
+    throw new Error("Quota status card branch not found");
+  }
+  return result.replace(matched[0].old, matched[0].replacement);
+}
+
+function isCatalogTarget(relative, original = "") {
+  return (
+    relative === "chunks/615.js" ||
+    relative.includes("1321-") ||
+    original.includes("40615:(")
+  );
+}
+
+function markerFor(relative, content = "") {
   if (relative === USAGE_RELATIVE) return MAIN_MARKER;
-  if (UI_RELATIVES.has(relative)) return UI_MARKER;
+  if (UI_RELATIVES.has(relative)) return UI_STATUS_MARKER;
+  if (isCatalogTarget(relative, content)) return PROVIDER_CATALOG_MARKER;
   return PROVIDERS_MARKER;
+}
+
+function buildLegacyPatched(relative, original) {
+  if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
+  if (UI_RELATIVES.has(relative)) return buildLegacyUiPatched(original);
+  return buildProvidersPatched(original);
 }
 
 function buildPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
+  if (isCatalogTarget(relative, original)) {
+    return buildProvidersPatched(buildProviderCatalogPatched(original));
+  }
   return buildProvidersPatched(original);
 }
 
@@ -746,7 +1108,7 @@ function apply() {
     return { relative, expectedHash, file, content };
   });
   const patchedCount = entries.filter(({ relative, content }) =>
-    content.includes(markerFor(relative)),
+    content.includes(markerFor(relative, content)),
   ).length;
   if (patchedCount === entries.length) {
     for (const entry of entries) {
@@ -764,24 +1126,38 @@ function apply() {
     }
     return false;
   }
-  if (patchedCount !== 0) {
+  const hasLegacyOrPartial = entries.some(
+    ({ content }) =>
+      LEGACY_MARKERS.some((m) => content.includes(m)) ||
+      content.includes(PROVIDER_CATALOG_MARKER) ||
+      content.includes(UI_STATUS_MARKER),
+  );
+
+  if (hasLegacyOrPartial) {
     const restore = [];
     for (const entry of entries) {
-      if (!entry.content.includes(markerFor(entry.relative))) {
-        if (hash(entry.content) !== entry.expectedHash) {
-          throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
-        }
-        continue;
+      const isClean = hash(entry.content) === entry.expectedHash;
+      if (isClean) continue;
+
+      const hasRecognizedMarker =
+        LEGACY_MARKERS.some((m) => entry.content.includes(m)) ||
+        entry.content.includes(PROVIDER_CATALOG_MARKER) ||
+        entry.content.includes(UI_STATUS_MARKER);
+      if (!hasRecognizedMarker) {
+        throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
       }
+
       const saved = originalPath(entry.relative);
       if (!fs.existsSync(saved)) {
         throw new Error(`Original bundle unavailable for recovery: ${entry.relative}`);
       }
       const original = fs.readFileSync(saved, "utf8");
-      if (
-        hash(original) !== entry.expectedHash ||
-        entry.content !== buildPatched(entry.relative, original)
-      ) {
+      if (hash(original) !== entry.expectedHash) {
+        throw new Error(`Saved original hash mismatch for ${entry.relative}`);
+      }
+      const expectedNew = buildPatched(entry.relative, original);
+      const expectedLegacy = buildLegacyPatched(entry.relative, original);
+      if (entry.content !== expectedNew && entry.content !== expectedLegacy) {
         throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
       }
       restore.push({ file: entry.file, original });
@@ -814,18 +1190,34 @@ function rollback() {
       throw new Error(`Original bundle unavailable for rollback: ${relative}`);
     }
     const original = fs.readFileSync(saved, "utf8");
-    const expected = buildPatched(relative, original);
-    return { relative, file, original, expected, current: fs.readFileSync(file, "utf8") };
+    const expectedHash = CATALOG_HASHES[relative];
+    if (hash(original) !== expectedHash) {
+      throw new Error(`Saved original hash mismatch for rollback: ${relative}`);
+    }
+    const expectedNew = buildPatched(relative, original);
+    const expectedLegacy = buildLegacyPatched(relative, original);
+    const current = fs.readFileSync(file, "utf8");
+    const hasMarker =
+      LEGACY_MARKERS.some((m) => current.includes(m)) ||
+      current.includes(PROVIDER_CATALOG_MARKER) ||
+      current.includes(UI_STATUS_MARKER);
+    return {
+      relative,
+      file,
+      original,
+      expectedNew,
+      expectedLegacy,
+      current,
+      hasMarker,
+    };
   });
-  const patchedCount = entries.filter(({ relative, current }) =>
-    current.includes(markerFor(relative)),
-  ).length;
+  const patchedCount = entries.filter(({ hasMarker }) => hasMarker).length;
   if (patchedCount === 0) return false;
   if (patchedCount !== entries.length) {
     throw new Error("Partial quota patch detected; refusing unsafe rollback");
   }
   for (const entry of entries) {
-    if (entry.current !== entry.expected) {
+    if (entry.current !== entry.expectedNew && entry.current !== entry.expectedLegacy) {
       throw new Error(`Patched bundle changed unexpectedly: ${entry.relative}`);
     }
   }
@@ -839,13 +1231,22 @@ function sanitize() {
     const file = path.join(SERVER_ROOT, relative);
     if (!fs.existsSync(file)) continue;
     const current = fs.readFileSync(file, "utf8");
-    if (!current.includes(markerFor(relative))) continue;
+    const hasMarker =
+      LEGACY_MARKERS.some((m) => current.includes(m)) ||
+      current.includes(PROVIDER_CATALOG_MARKER) ||
+      current.includes(UI_STATUS_MARKER);
+    if (!hasMarker) continue;
     const saved = originalPath(relative);
     if (!fs.existsSync(saved)) {
       throw new Error(`Original bundle unavailable for sanitization: ${relative}`);
     }
     const original = fs.readFileSync(saved, "utf8");
-    if (current !== buildPatched(relative, original)) {
+    if (hash(original) !== CATALOG_HASHES[relative]) {
+      throw new Error(`Saved original hash mismatch for sanitization: ${relative}`);
+    }
+    const expectedNew = buildPatched(relative, original);
+    const expectedLegacy = buildLegacyPatched(relative, original);
+    if (current !== expectedNew && current !== expectedLegacy) {
       throw new Error(`Refusing to sanitize an unknown patched bundle: ${relative}`);
     }
     atomicWrite(file, original);
@@ -860,7 +1261,7 @@ function check() {
     const file = path.join(SERVER_ROOT, relative);
     if (!fs.existsSync(file)) return false;
     const content = fs.readFileSync(file, "utf8");
-    return content.includes(markerFor(relative));
+    return content.includes(markerFor(relative, content));
   }).length;
   const state = {
     version: JSON.parse(fs.readFileSync(PACKAGE_JSON, "utf8")).version,
@@ -895,6 +1296,19 @@ module.exports = {
   qtpParseOpenRouter,
   qtpNormalizeXai,
   qtpQuota,
+  qtpAlibabaPercent,
+  qtpFindAlibabaUsage,
+  qtpAlibabaWindow,
+  qtpParseAlibabaTokenPlan,
+  qtpSafeAlibabaReason,
+  qtpFetchAlibabaPayload,
+  qtpFetchAlibabaTokenPlan,
+  qtpAlibabaCache,
+  qtpAlibaba,
+  buildProviderCatalogPatched,
+  buildProvidersPatched,
+  buildUiPatched,
+  buildLegacyPatched,
 };
 
 if (require.main === module) main();
