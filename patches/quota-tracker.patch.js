@@ -1016,15 +1016,34 @@ function buildLegacyUiPatched(original) {
 function buildUiPatched(original) {
   if (original.includes(UI_STATUS_MARKER)) return original;
   let result = buildLegacyUiPatched(original);
-  const cardOld =
-    'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})';
-  const cardReplacement =
-    'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsxs)("div",{children:[i?.raw?.source?(0,d.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${i.raw.source} · ${i.raw.status||"ok"} · ${i.raw.fetchedAt||""}`}):null,(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})]})' +
-    UI_STATUS_MARKER;
-  if (result.includes(cardOld)) {
-    result = result.replace(cardOld, cardReplacement);
+  const matches = [
+    {
+      old:
+        'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})',
+      replacement:
+        'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsxs)("div",{children:[i?.raw?.source?(0,d.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${i.raw.source} · ${i.raw.status||"ok"} · ${i.raw.fetchedAt||""}`}):null,(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})]})' +
+        UI_STATUS_MARKER,
+    },
+    {
+      old:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(w,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})',
+      replacement:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsxs)("div",{children:[o?.raw?.source?(0,a.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${o.raw.source} · ${o.raw.status||"ok"} · ${o.raw.fetchedAt||""}`}):null,(0,a.jsx)(w,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})]})' +
+        UI_STATUS_MARKER,
+    },
+    {
+      old:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(k,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})',
+      replacement:
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsxs)("div",{children:[o?.raw?.source?(0,a.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${o.raw.source} · ${o.raw.status||"ok"} · ${o.raw.fetchedAt||""}`}):null,(0,a.jsx)(k,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})]})' +
+        UI_STATUS_MARKER,
+    },
+  ];
+  const match = matches.find(({ old }) => result.includes(old));
+  if (!match) {
+    throw new Error("Quota status card branch not found");
   }
-  return result;
+  return result.replace(match.old, match.replacement);
 }
 
 function isCatalogTarget(relative) {
@@ -1033,8 +1052,7 @@ function isCatalogTarget(relative) {
 
 function markerFor(relative) {
   if (relative === USAGE_RELATIVE) return MAIN_MARKER;
-  if (relative === "app/(dashboard)/dashboard/quota/page.js") return UI_STATUS_MARKER;
-  if (UI_RELATIVES.has(relative)) return UI_MARKER;
+  if (UI_RELATIVES.has(relative)) return UI_STATUS_MARKER;
   if (isCatalogTarget(relative)) return PROVIDER_CATALOG_MARKER;
   return PROVIDERS_MARKER;
 }

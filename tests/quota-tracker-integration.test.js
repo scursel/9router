@@ -209,6 +209,11 @@ for (const variant of VARIANTS_TO_TEST) {
     patchedQuotaPage.includes("QuotaTrackerAlibabaStatus:v1"),
     `patched quota page must contain QuotaTrackerAlibabaStatus:v1 marker (${variant})`,
   );
+  assert.equal(
+    (patchedQuotaPage.match(/QuotaTrackerAlibabaStatus:v1/g) || []).length,
+    1,
+    `QuotaTrackerAlibabaStatus:v1 must occur exactly once in quota page (${variant})`,
+  );
   assert.ok(
     patchedQuotaPage.includes("i.raw?.source") || patchedQuotaPage.includes("i?.raw?.source"),
     `patched quota page must contain i.raw?.source (${variant})`,
@@ -234,6 +239,20 @@ for (const variant of VARIANTS_TO_TEST) {
   assert.ok(
     patchedQuotaPage.includes('(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})'),
     `patched quota page must retain QuotaList renderer in the non-message branch (${variant})`,
+  );
+
+  // Assert that unpatched / corrupted source shape fails closed
+  const corruptedQuotaPage = originalQuotaPage.replace(/i\?\.message/g, "corrupted_ssr_branch");
+  assert.throws(
+    () => buildUiPatched(corruptedQuotaPage),
+    /Quota status card branch not found/,
+    `buildUiPatched must fail on corrupted server quota page shape (${variant})`,
+  );
+
+  // Assert that UI currency marker is also present
+  assert.ok(
+    patchedQuotaPage.includes("/* QuotaTrackerCurrency:v2 */"),
+    `patched quota page must contain UI_MARKER (${variant})`,
   );
 
   // Assert that no sensitive secrets are injected into the UI page
@@ -266,9 +285,68 @@ for (const variant of VARIANTS_TO_TEST) {
         `patched client quota chunk ${f} must differ from original (${variant})`,
       );
       assert.ok(
+        patchedClientQuotaChunk.includes("QuotaTrackerAlibabaStatus:v1"),
+        `patched client quota chunk ${f} must contain UI_STATUS_MARKER (${variant})`,
+      );
+      assert.equal(
+        (patchedClientQuotaChunk.match(/QuotaTrackerAlibabaStatus:v1/g) || []).length,
+        1,
+        `QuotaTrackerAlibabaStatus:v1 must occur exactly once in ${f} (${variant})`,
+      );
+      assert.ok(
+        patchedClientQuotaChunk.includes("o?.raw?.source") || patchedClientQuotaChunk.includes("o.raw?.source") || patchedClientQuotaChunk.includes("o.raw.source"),
+        `patched client quota chunk ${f} must contain o.raw.source (${variant})`,
+      );
+      assert.ok(
+        patchedClientQuotaChunk.includes("o?.raw?.status") || patchedClientQuotaChunk.includes("o.raw?.status") || patchedClientQuotaChunk.includes("o.raw.status"),
+        `patched client quota chunk ${f} must contain o.raw.status (${variant})`,
+      );
+      assert.ok(
+        patchedClientQuotaChunk.includes("o?.raw?.fetchedAt") || patchedClientQuotaChunk.includes("o.raw?.fetchedAt") || patchedClientQuotaChunk.includes("o.raw.fetchedAt"),
+        `patched client quota chunk ${f} must contain o.raw.fetchedAt (${variant})`,
+      );
+
+      // Assert that the original client message-only branch is replaced exactly once
+      const originalClientBranchW =
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(w,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})';
+      const originalClientBranchK =
+        'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(k,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})';
+      assert.ok(
+        !patchedClientQuotaChunk.includes(originalClientBranchW),
+        `patched client quota chunk ${f} must not contain original w message branch (${variant})`,
+      );
+      assert.ok(
+        !patchedClientQuotaChunk.includes(originalClientBranchK),
+        `patched client quota chunk ${f} must not contain original k message branch (${variant})`,
+      );
+
+      // Assert that the quota-list renderer remains in the non-message branch
+      assert.ok(
+        patchedClientQuotaChunk.includes('(0,a.jsx)(w,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})') ||
+        patchedClientQuotaChunk.includes('(0,a.jsx)(k,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})'),
+        `patched client quota chunk ${f} must retain QuotaList renderer (${variant})`,
+      );
+
+      // Assert that unpatched / corrupted source shape fails closed
+      const corruptedClientQuotaChunk = originalClientQuotaChunk.replace(/o\?\.message/g, "corrupted_client_branch");
+      assert.throws(
+        () => buildUiPatched(corruptedClientQuotaChunk),
+        /Quota status card branch not found/,
+        `buildUiPatched must fail on corrupted client quota chunk shape (${variant})`,
+      );
+
+      assert.ok(
         patchedClientQuotaChunk.includes("/* QuotaTrackerCurrency:v2 */"),
         `patched client quota chunk ${f} must contain UI_MARKER (${variant})`,
       );
+
+      for (const forbidden of ["cookie", "sec_token", "secToken", "Authorization", "sk-sp-"]) {
+        assert.ok(
+          !patchedClientQuotaChunk.includes(forbidden) || originalClientQuotaChunk.includes(forbidden),
+          `patched client quota chunk ${f} must not introduce forbidden secret-like token ${forbidden} (${variant})`,
+        );
+      }
+
       const reappliedClientQuotaChunk = buildUiPatched(patchedClientQuotaChunk);
       assert.equal(
         reappliedClientQuotaChunk,
@@ -368,6 +446,22 @@ assert.ok(
   "scratch quota page must contain i.raw?.source",
 );
 
+const scratchClientChunk = fs.readFileSync(
+  path.join(scratchRoot, "app/.next-cli-build/static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js"),
+  "utf8",
+);
+assert.ok(
+  scratchClientChunk.includes(uiStatusMarker),
+  "scratch client chunk must contain UI_STATUS_MARKER",
+);
+assert.ok(
+  scratchClientChunk.includes(uiMarker),
+  "scratch client chunk must contain UI_MARKER",
+);
+assert.ok(
+  scratchClientChunk.includes("o?.raw?.source") || scratchClientChunk.includes("o.raw?.source") || scratchClientChunk.includes("o.raw.source"),
+  "scratch client chunk must contain o.raw.source",
+);
 // Idempotent re-apply
 const apply2 = runScratchPatch(["--apply"]).trim();
 assert.equal(apply2, "already applied", "reapplication must return already applied");
@@ -383,7 +477,14 @@ const quotaPageClean = fs.readFileSync(
   "utf8",
 );
 assert.ok(!quotaPageClean.includes(uiStatusMarker), "rolled back quota page must not contain UI_STATUS_MARKER");
+assert.ok(!quotaPageClean.includes(uiMarker), "rolled back quota page must not contain UI_MARKER");
 
+const clientChunkClean = fs.readFileSync(
+  path.join(scratchRoot, "app/.next-cli-build/static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js"),
+  "utf8",
+);
+assert.ok(!clientChunkClean.includes(uiStatusMarker), "rolled back client chunk must not contain UI_STATUS_MARKER");
+assert.ok(!clientChunkClean.includes(uiMarker), "rolled back client chunk must not contain UI_MARKER");
 const rb2 = runScratchPatch(["--rollback"]).trim();
 assert.equal(rb2, "already clean", "second rollback must return already clean");
 const original615Content = fs.readFileSync(path.join(srcVariantDir, "server/chunks/615.js"), "utf8");
@@ -409,17 +510,25 @@ assert.ok(migrated615.includes(providerCatalogMarker), "migrated 615.js must con
 assert.ok(migrated615.includes("qwen-cloud-token-plan"), "migrated 615.js must contain canonical provider");
 
 
-// Test B3: Valid legacy UI-patched page bundle safely migrated by --apply
+// Test B3: Valid legacy UI-patched page and client bundle safely migrated by --apply
 runScratchPatch(["--rollback"]);
 const originalPageContent = fs.readFileSync(path.join(srcVariantDir, "server/app/(dashboard)/dashboard/quota/page.js"), "utf8");
 const validLegacyPage = buildLegacyPatched("app/(dashboard)/dashboard/quota/page.js", originalPageContent);
 fs.writeFileSync(path.join(serverRoot, "app/(dashboard)/dashboard/quota/page.js"), validLegacyPage, "utf8");
+
+const originalClientContent = fs.readFileSync(path.join(srcVariantDir, "static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js"), "utf8");
+const validLegacyClient = buildLegacyPatched("../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js", originalClientContent);
+fs.writeFileSync(path.join(scratchRoot, "app/.next-cli-build/static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js"), validLegacyClient, "utf8");
+
 const migrateUiApply = runScratchPatch(["--apply"]).trim();
 assert.equal(migrateUiApply, "applied", "apply on valid legacy UI bundle must safely migrate and apply");
 const migratedPage = fs.readFileSync(path.join(serverRoot, "app/(dashboard)/dashboard/quota/page.js"), "utf8");
 assert.ok(migratedPage.includes(uiStatusMarker), "migrated page.js must contain UI_STATUS_MARKER");
 assert.ok(migratedPage.includes(uiMarker), "migrated page.js must contain UI_MARKER");
-// Test C: Rollback with legacy markers
+
+const migratedClient = fs.readFileSync(path.join(scratchRoot, "app/.next-cli-build/static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js"), "utf8");
+assert.ok(migratedClient.includes(uiStatusMarker), "migrated client chunk must contain UI_STATUS_MARKER");
+assert.ok(migratedClient.includes(uiMarker), "migrated client chunk must contain UI_MARKER");
 // C1: Partial legacy rollback refused
 runScratchPatch(["--rollback"]); // rollback to clean state
 fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), validLegacy615, "utf8");
