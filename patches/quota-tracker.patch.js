@@ -330,13 +330,21 @@ const CANONICAL_PROVIDER = {
 function buildProviderCatalogPatched(original) {
   if (original.includes(PROVIDER_CATALOG_MARKER)) return original;
 
-  // Server chunk chunks/615.js
-  const requireMatch = original.match(/var d=c\(\d+\);/);
-  if (requireMatch) {
+  // Server bundles that embed module 40615.
+  const catalogModuleIdx = original.indexOf("40615:(");
+  const serverRequireMatch =
+    catalogModuleIdx >= 0
+      ? original.slice(catalogModuleIdx).match(/var d=c\(\d+\);/)
+      : null;
+  if (serverRequireMatch) {
     const serverEntry = JSON.stringify(CANONICAL_PROVIDER);
     const injectCode = `{let a=${serverEntry};d.A.some(b=>b.id===a.id)||d.A.push(a);}`;
+    const insertAt =
+      catalogModuleIdx + serverRequireMatch.index + serverRequireMatch[0].length;
     return (
-      original.replace(requireMatch[0], requireMatch[0] + injectCode) +
+      original.slice(0, insertAt) +
+      injectCode +
+      original.slice(insertAt) +
       PROVIDER_CATALOG_MARKER
     );
   }
@@ -1049,14 +1057,18 @@ function buildUiPatched(original) {
   return result.replace(matched[0].old, matched[0].replacement);
 }
 
-function isCatalogTarget(relative) {
-  return relative === "chunks/615.js" || relative.includes("1321-");
+function isCatalogTarget(relative, original = "") {
+  return (
+    relative === "chunks/615.js" ||
+    relative.includes("1321-") ||
+    original.includes("40615:(")
+  );
 }
 
-function markerFor(relative) {
+function markerFor(relative, content = "") {
   if (relative === USAGE_RELATIVE) return MAIN_MARKER;
   if (UI_RELATIVES.has(relative)) return UI_STATUS_MARKER;
-  if (isCatalogTarget(relative)) return PROVIDER_CATALOG_MARKER;
+  if (isCatalogTarget(relative, content)) return PROVIDER_CATALOG_MARKER;
   return PROVIDERS_MARKER;
 }
 
@@ -1069,7 +1081,7 @@ function buildLegacyPatched(relative, original) {
 function buildPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
-  if (isCatalogTarget(relative)) {
+  if (isCatalogTarget(relative, original)) {
     return buildProvidersPatched(buildProviderCatalogPatched(original));
   }
   return buildProvidersPatched(original);
@@ -1096,7 +1108,7 @@ function apply() {
     return { relative, expectedHash, file, content };
   });
   const patchedCount = entries.filter(({ relative, content }) =>
-    content.includes(markerFor(relative)),
+    content.includes(markerFor(relative, content)),
   ).length;
   if (patchedCount === entries.length) {
     for (const entry of entries) {
@@ -1249,7 +1261,7 @@ function check() {
     const file = path.join(SERVER_ROOT, relative);
     if (!fs.existsSync(file)) return false;
     const content = fs.readFileSync(file, "utf8");
-    return content.includes(markerFor(relative));
+    return content.includes(markerFor(relative, content));
   }).length;
   const state = {
     version: JSON.parse(fs.readFileSync(PACKAGE_JSON, "utf8")).version,

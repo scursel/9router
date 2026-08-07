@@ -501,6 +501,23 @@ assert.ok(client1321.includes(providerCatalogMarker), "client 1321 chunk must co
 assert.ok(client1321.includes("qwen-cloud-token-plan"), "client 1321 chunk must contain qwen-cloud-token-plan");
 assert.ok(client1321.includes("qct"), "client 1321 chunk must contain qct");
 
+const server869 = fs.readFileSync(path.join(serverRoot, "chunks/869.js"), "utf8");
+assert.ok(server869.includes(providerCatalogMarker), "869.js must contain PROVIDER_CATALOG_MARKER");
+assert.ok(server869.includes("qwen-cloud-token-plan"), "869.js must contain qwen-cloud-token-plan");
+assert.ok(server869.includes("qct"), "869.js must contain qct");
+
+const scratchProviderClientRoute = fs.readFileSync(
+  path.join(serverRoot, "app/api/providers/client/route.js"),
+  "utf8",
+);
+assert.ok(
+  scratchProviderClientRoute.includes(providerCatalogMarker),
+  "provider client route must contain PROVIDER_CATALOG_MARKER",
+);
+assert.ok(
+  scratchProviderClientRoute.includes("qwen-cloud-token-plan"),
+  "provider client route must contain qwen-cloud-token-plan",
+);
 const scratchQuotaPage = fs.readFileSync(
   path.join(serverRoot, "app/(dashboard)/dashboard/quota/page.js"),
   "utf8",
