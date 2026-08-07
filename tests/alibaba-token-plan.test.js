@@ -7,6 +7,11 @@ const fs = require("fs");
 const path = require("path");
 const {
   qtpParseAlibabaTokenPlan,
+  qtpFetchAlibabaTokenPlan,
+  qtpFetchAlibabaPayload,
+  qtpSafeAlibabaReason,
+  qtpAlibabaCache,
+  qtpAlibaba,
 } = require("../patches/quota-tracker.patch.js");
 
 function wrap(data) {
@@ -318,5 +323,219 @@ assert.deepEqual(utcResult, honoluluResult);
 assert.deepEqual(utcResult, shanghaiResult);
 assert.equal(utcResult.quotas["5 hour window (%)"].resetAt, "2026-08-08T01:00:00.000Z");
 assert.equal(utcResult.quotas["7 day window (%)"].resetAt, "2026-08-13T00:00:00.000Z");
-
 console.log("Alibaba Token Plan parser tests: ok");
+
+async function runAdapterTests() {
+  const responseHelper = (status, body) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    async json() {
+      return body;
+    },
+  });
+
+  const mockEnv = {
+    ALIBABA_TOKEN_PLAN_QUOTA_COOKIE: "fixture-cookie",
+    ALIBABA_TOKEN_PLAN_SEC_TOKEN: "fixture-sec-token",
+  };
+
+  // 7. Missing environment secrets
+  {
+    const calls = [];
+    const dummyFetcher = async (url, init) => {
+      calls.push({ url, init });
+      return responseHelper(200, fixture);
+    };
+    const dummyCache = new Map();
+
+    const missingCookie = await qtpFetchAlibabaTokenPlan(dummyFetcher, dummyCache, {
+      ALIBABA_TOKEN_PLAN_SEC_TOKEN: "fixture-sec-token",
+    });
+    assert.equal(missingCookie.status, "unavailable");
+    assert.equal(missingCookie.source, "alibaba-console");
+    assert.equal(missingCookie.reason, "session unavailable");
+    assert.equal(calls.length, 0);
+
+    const missingSecToken = await qtpFetchAlibabaTokenPlan(dummyFetcher, dummyCache, {
+      ALIBABA_TOKEN_PLAN_QUOTA_COOKIE: "fixture-cookie",
+    });
+    assert.equal(missingSecToken.status, "unavailable");
+    assert.equal(missingSecToken.source, "alibaba-console");
+    assert.equal(missingSecToken.reason, "session unavailable");
+    assert.equal(calls.length, 0);
+  }
+
+  // 8. Normal success response & request shape verification
+  {
+    const calls = [];
+    const fetcher = async (url, init) => {
+      calls.push({ url, init });
+      return responseHelper(200, fixture);
+    };
+    const testCache = new Map();
+    const now = Date.parse("2026-08-07T12:00:00.000Z");
+
+    const res = await qtpFetchAlibabaTokenPlan(fetcher, testCache, mockEnv, now);
+    assert.equal(res.status, "ok");
+    assert.equal(res.source, "alibaba-console");
+    assert.equal(res.plan, "Alibaba Token Plan");
+    assert.equal(res.message, undefined);
+    assert.equal(res.fetchedAt, "2026-08-07T12:00:00.000Z");
+    assert.equal(res.quotas["5 hour window (%)"].used, 37);
+    assert.equal(res.quotas["5 hour window (%)"].total, 100);
+    assert.equal(res.quotas["5 hour window (%)"].remainingPercentage, 63);
+    assert.equal(res.quotas["5 hour window (%)"].resetAt, "2026-08-08T01:00:00.000Z");
+    assert.equal(res.quotas["7 day window (%)"].used, 12);
+    assert.equal(res.quotas["7 day window (%)"].total, 100);
+    assert.equal(res.quotas["7 day window (%)"].remainingPercentage, 88);
+    assert.equal(res.quotas["7 day window (%)"].resetAt, "2026-08-13T00:00:00.000Z");
+
+    // Verify fetcher request parameters
+    assert.equal(calls.length, 1);
+    const { url, init } = calls[0];
+    assert.equal(
+      url,
+      "https://cs-data.qwencloud.com/data/api.json?action=IntlBroadScopeAspnGateway&product=sfm_bailian&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage&_v=undefined",
+    );
+    assert.equal(init.method, "POST");
+    assert.equal(init.headers["Content-Type"], "application/x-www-form-urlencoded");
+    assert.equal(init.headers["Cookie"], "fixture-cookie");
+    assert.equal(
+      init.headers["Referer"],
+      "https://home.qwencloud.com/billing/subscription/token-plan-individual",
+    );
+    assert.equal(init.headers["Origin"], "https://home.qwencloud.com");
+    assert.equal(init.headers["X-Requested-With"], "XMLHttpRequest");
+    assert.equal(init.headers["Accept"], "application/json, text/plain, */*");
+    assert.ok(init.body.includes("product=sfm_bailian"));
+    assert.ok(init.body.includes("action=IntlBroadScopeAspnGateway"));
+    assert.ok(init.body.includes("sec_token=fixture-sec-token"));
+    assert.ok(init.body.includes("region=ap-southeast-1"));
+    assert.ok(init.body.includes("language=en-US"));
+    assert.ok(init.body.includes("cornerstoneParam"));
+  }
+
+  // 9. Failure modes without cache
+  {
+    const testCache = new Map();
+
+    // 401
+    const f401 = async () => responseHelper(401, { error: "unauthorized" });
+    const res401 = await qtpFetchAlibabaTokenPlan(f401, testCache, mockEnv);
+    assert.equal(res401.status, "unavailable");
+    assert.equal(res401.source, "alibaba-console");
+    assert.equal(res401.reason, "authentication failed");
+
+    // 403
+    const f403 = async () => responseHelper(403, { error: "forbidden" });
+    const res403 = await qtpFetchAlibabaTokenPlan(f403, testCache, mockEnv);
+    assert.equal(res403.status, "unavailable");
+    assert.equal(res403.source, "alibaba-console");
+    assert.equal(res403.reason, "authentication failed");
+
+    // 429
+    const f429 = async () => responseHelper(429, { error: "rate limit" });
+    const res429 = await qtpFetchAlibabaTokenPlan(f429, testCache, mockEnv);
+    assert.equal(res429.status, "unavailable");
+    assert.equal(res429.source, "alibaba-console");
+    assert.equal(res429.reason, "quota unavailable");
+
+    // 500
+    const f500 = async () => responseHelper(500, { error: "server error" });
+    const res500 = await qtpFetchAlibabaTokenPlan(f500, testCache, mockEnv);
+    assert.equal(res500.status, "unavailable");
+    assert.equal(res500.source, "alibaba-console");
+    assert.equal(res500.reason, "quota unavailable");
+
+    // Network rejection / timeout
+    const fReject = async () => {
+      throw new Error("connect ECONNREFUSED");
+    };
+    const resReject = await qtpFetchAlibabaTokenPlan(fReject, testCache, mockEnv);
+    assert.equal(resReject.status, "unavailable");
+    assert.equal(resReject.source, "alibaba-console");
+    assert.equal(resReject.reason, "quota unavailable");
+
+    // Empty JSON
+    const fEmpty = async () => responseHelper(200, {});
+    const resEmpty = await qtpFetchAlibabaTokenPlan(fEmpty, testCache, mockEnv);
+    assert.equal(resEmpty.status, "unavailable");
+    assert.equal(resEmpty.source, "alibaba-console");
+    assert.equal(resEmpty.reason, "quota unavailable");
+
+    // Invalid schema
+    const fInvalid = async () => responseHelper(200, { code: 200, data: { DataV2: { data: { data: {} } } } });
+    const resInvalid = await qtpFetchAlibabaTokenPlan(fInvalid, testCache, mockEnv);
+    assert.equal(resInvalid.status, "unavailable");
+    assert.equal(resInvalid.source, "alibaba-console");
+    assert.equal(resInvalid.reason, "quota unavailable");
+  }
+
+  // 10. Cache behavior: fresh (<60s), stale (<=300s on error), expired (>300s on error)
+  {
+    const testCache = new Map();
+    const t0 = Date.parse("2026-08-07T12:00:00.000Z");
+    let fetchCount = 0;
+    const succFetcher = async () => {
+      fetchCount++;
+      return responseHelper(200, fixture);
+    };
+    const failFetcher = async () => {
+      fetchCount++;
+      return responseHelper(500, { error: "fail" });
+    };
+
+    // Initial successful fetch at t0
+    const r0 = await qtpFetchAlibabaTokenPlan(succFetcher, testCache, mockEnv, t0);
+    assert.equal(r0.status, "ok");
+    assert.equal(r0.fetchedAt, "2026-08-07T12:00:00.000Z");
+    assert.equal(fetchCount, 1);
+
+    // 30 seconds later (t0 + 30_000): fresh cache return without calling fetcher
+    const r30s = await qtpFetchAlibabaTokenPlan(failFetcher, testCache, mockEnv, t0 + 30_000);
+    assert.equal(r30s.status, "ok");
+    assert.equal(r30s.fetchedAt, "2026-08-07T12:00:00.000Z");
+    assert.equal(r30s.message, undefined);
+    assert.equal(fetchCount, 1);
+
+    // 120 seconds later (t0 + 120_000): cache older than 60s, fetcher is called and fails
+    // Returns "stale" with original timestamp t0, and no message property
+    const r120s = await qtpFetchAlibabaTokenPlan(failFetcher, testCache, mockEnv, t0 + 120_000);
+    assert.equal(r120s.status, "stale");
+    assert.equal(r120s.fetchedAt, "2026-08-07T12:00:00.000Z");
+    assert.equal(r120s.message, undefined);
+    assert.equal(r120s.quotas["5 hour window (%)"].used, 37);
+    assert.equal(fetchCount, 2);
+
+    // Exactly 300 seconds (5 min) later (t0 + 300_000): fetcher fails -> returns "stale"
+    const r300s = await qtpFetchAlibabaTokenPlan(failFetcher, testCache, mockEnv, t0 + 300_000);
+    assert.equal(r300s.status, "stale");
+    assert.equal(r300s.fetchedAt, "2026-08-07T12:00:00.000Z");
+
+    // 300_001 ms (5 min + 1 ms) later (t0 + 300_001): cache expired (>300s), fetcher fails -> returns "unavailable"
+    const r300sPlus1 = await qtpFetchAlibabaTokenPlan(failFetcher, testCache, mockEnv, t0 + 300_001);
+    assert.equal(r300sPlus1.status, "unavailable");
+    assert.equal(r300sPlus1.reason, "quota unavailable");
+  }
+
+  // 11. No secret leakage in JSON.stringify of results
+  {
+    const testCache = new Map();
+    const fetcher = async () => responseHelper(200, fixture);
+    const okRes = await qtpFetchAlibabaTokenPlan(fetcher, testCache, mockEnv);
+    const unavailRes = await qtpFetchAlibabaTokenPlan(async () => responseHelper(500, {}), new Map(), mockEnv);
+
+    for (const obj of [okRes, unavailRes]) {
+      const json = JSON.stringify(obj);
+      assert.equal(json.includes("fixture-cookie"), false);
+      assert.equal(json.includes("fixture-sec-token"), false);
+    }
+  }
+
+  console.log("Alibaba Token Plan adapter tests: ok");
+}
+
+runAdapterTests().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

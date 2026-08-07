@@ -296,11 +296,11 @@ const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
 const USAGE_ALLOW_MARKER =
   "x=d.A.filter(a=>a.features?.usage).map(a=>a.id)";
 const USAGE_ALLOW_PATCHED =
-  'x=[...new Set([...d.A.filter(a=>a.features?.usage).map(a=>a.id),"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass"])]';
+  'x=[...new Set([...d.A.filter(a=>a.features?.usage).map(a=>a.id),"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"])]';
 const API_KEY_ALLOW_MARKER =
   "y=d.A.filter(a=>a.features?.usageApikey).map(a=>a.id)";
 const API_KEY_ALLOW_PATCHED =
-  'y=[...new Set([...d.A.filter(a=>a.features?.usageApikey).map(a=>a.id),"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass"])]';
+  'y=[...new Set([...d.A.filter(a=>a.features?.usageApikey).map(a=>a.id),"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"])]';
 
 function qtpNum(value, fallback = NaN) {
   const number = Number(value);
@@ -615,6 +615,127 @@ function qtpParseAlibabaTokenPlan(body, now = Date.now()) {
   };
 }
 
+const qtpAlibabaCache = new Map();
+
+function qtpSafeAlibabaReason(error) {
+  const msg = String(error?.message || error || "");
+  if (msg.includes("session unavailable")) return "session unavailable";
+  if (msg.includes("authentication failed") || msg.includes("401") || msg.includes("403")) {
+    return "authentication failed";
+  }
+  return "quota unavailable";
+}
+
+async function qtpFetchAlibabaPayload(fetcher, cookie, secToken) {
+  const url =
+    "https://cs-data.qwencloud.com/data/api.json?action=IntlBroadScopeAspnGateway&product=sfm_bailian&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage&_v=undefined";
+  const body = new URLSearchParams({
+    product: "sfm_bailian",
+    action: "IntlBroadScopeAspnGateway",
+    sec_token: secToken,
+    region: "ap-southeast-1",
+    language: "en-US",
+    params: JSON.stringify({
+      Api: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
+      V: "1.0",
+      Data: "{}",
+      cornerstoneParam: JSON.stringify({
+        product: "sfm_bailian",
+        action: "IntlBroadScopeAspnGateway",
+        sec_token: secToken,
+        region: "ap-southeast-1",
+        language: "en-US",
+      }),
+    }),
+  }).toString();
+
+  let res;
+  try {
+    res = await fetcher(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cookie": cookie,
+        "Referer": "https://home.qwencloud.com/billing/subscription/token-plan-individual",
+        "Origin": "https://home.qwencloud.com",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/plain, */*",
+      },
+      body,
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (err) {
+    throw new Error("quota unavailable");
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error("authentication failed");
+  }
+  if (!res.ok) {
+    throw new Error("quota unavailable");
+  }
+
+  try {
+    return await res.json();
+  } catch (err) {
+    throw new Error("quota unavailable");
+  }
+}
+
+async function qtpFetchAlibabaTokenPlan(fetcher, cache, env, now = Date.now()) {
+  const cookie = String(env?.ALIBABA_TOKEN_PLAN_QUOTA_COOKIE || "").trim();
+  const secToken = String(env?.ALIBABA_TOKEN_PLAN_SEC_TOKEN || "").trim();
+  if (!cookie || !secToken) {
+    return { status: "unavailable", source: "alibaba-console", reason: "session unavailable" };
+  }
+
+  const cached = cache.get("qwen-cloud-token-plan");
+  if (cached && now - cached.fetchedAt < 60_000) {
+    return { ...cached.value, status: "ok" };
+  }
+
+  try {
+    const payload = await qtpFetchAlibabaPayload(fetcher, cookie, secToken);
+    const parsed = qtpParseAlibabaTokenPlan(payload, now);
+    if (!parsed) throw new Error("quota unavailable");
+    const value = {
+      ...parsed,
+      status: "ok",
+      source: "alibaba-console",
+      fetchedAt: new Date(now).toISOString(),
+    };
+    cache.set("qwen-cloud-token-plan", { value, fetchedAt: now });
+    return value;
+  } catch (error) {
+    if (cached && now - cached.fetchedAt <= 300_000) {
+      return { ...cached.value, status: "stale" };
+    }
+    return {
+      status: "unavailable",
+      source: "alibaba-console",
+      reason: qtpSafeAlibabaReason(error),
+    };
+  }
+}
+
+async function qtpAlibaba(a) {
+  const res = await qtpFetchAlibabaTokenPlan(
+    (url, init) => (0, d.proxyAwareFetch)(url, init, a.proxyOptions),
+    qtpAlibabaCache,
+    process.env,
+    Date.now(),
+  );
+  if (res && res.status === "unavailable") {
+    return {
+      message: "Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",
+      quotas: {},
+      status: "unavailable",
+      source: "alibaba-console",
+      reason: res.reason,
+    };
+  }
+  return res;
+}
 function hash(content) {
   return crypto.createHash("sha256").update(content).digest("hex");
 }
@@ -668,6 +789,9 @@ function runtimeFunctions() {
     qtpFindAlibabaUsage,
     qtpAlibabaWindow,
     qtpParseAlibabaTokenPlan,
+    qtpSafeAlibabaReason,
+    qtpFetchAlibabaPayload,
+    qtpFetchAlibabaTokenPlan,
   ]
     .map((fn) => fn.toString())
     .join("");
@@ -676,6 +800,7 @@ function runtimeFunctions() {
 function injectedCode(grokFn) {
   return (
     MAIN_MARKER +
+    'let qtpAlibabaCache=new Map();' +
     runtimeFunctions() +
     'async function qtpGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Authorization:"Bearer "+b,Accept:"application/json"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'function qtpError(a,b){return{message:b+" quota API "+(a.status?"error ("+a.status+").":a.error+"."),quotas:{}}}' +
@@ -684,8 +809,9 @@ function injectedCode(grokFn) {
     'async function qtpCommandCode(a,b){if(!a)return{message:"CommandCode API key not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.commandcode.ai/alpha/billing/credits",a,b),qtpGet("https://api.commandcode.ai/alpha/billing/subscriptions",a,b)]);if(!c.ok)return qtpError(c,"CommandCode");let e=qtpParseCommandCode(c.body,d.ok?d.body:null);return e||{message:"CommandCode connected. No quota data was returned.",quotas:{}}}' +
     'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
-    'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
-    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions)};`
+    'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);if(!l.hasMore||!l.nextCursor)break;i=l.nextCursor;let n=new Date(m[m.length-1]?.createdAt).getTime();if(n<j)break}let o=qtpParseCline(d.body,h);return o||{message:"ClinePass connected. No usage data was returned.",quotas:{}}}' +
+    'async function qtpAlibaba(a){let b=await qtpFetchAlibabaTokenPlan((u,i)=>(0,d.proxyAwareFetch)(u,i,a.proxyOptions),qtpAlibabaCache,process.env,Date.now());return b&&"unavailable"===b.status?{message:"Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",quotas:{},status:"unavailable",source:"alibaba-console",reason:b.reason}:b}' +
+    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a)};`
   );
 }
 
@@ -756,9 +882,9 @@ function buildProvidersPatched(original) {
     throw new Error("Provider client allow-list marker not found");
   }
   const usageProviders =
-    '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass"';
+    '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"';
   const apiKeyProviders =
-    '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass"';
+    '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"';
   return original
     .replace(usagePattern, (expression) =>
       `[...new Set([...${expression},${usageProviders}])]`)
@@ -973,6 +1099,11 @@ module.exports = {
   qtpFindAlibabaUsage,
   qtpAlibabaWindow,
   qtpParseAlibabaTokenPlan,
+  qtpSafeAlibabaReason,
+  qtpFetchAlibabaPayload,
+  qtpFetchAlibabaTokenPlan,
+  qtpAlibabaCache,
+  qtpAlibaba,
 };
 
 if (require.main === module) main();
