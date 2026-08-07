@@ -693,13 +693,25 @@ function parseSystemdSections(content) {
   }
   return sections;
 }
+function parseEnvironmentFileDirective(line) {
+  const match = line.match(/^EnvironmentFile\s*=\s*(.*)$/);
+  if (!match) {
+    return null;
+  }
+  const value = match[1].trim();
+  return {
+    raw: line,
+    value,
+    normalized: `EnvironmentFile=${value}`,
+  };
+}
 
 function verifyServiceEnvironmentFile(content) {
   const parsed = parseSystemdSections(content);
   const serviceDirectives = parsed["Service"] || [];
-  const serviceEnvDirectives = serviceDirectives.filter((line) =>
-    line.startsWith("EnvironmentFile="),
-  );
+  const serviceEnvDirectives = serviceDirectives
+    .map(parseEnvironmentFileDirective)
+    .filter(Boolean);
 
   assert.equal(
     serviceEnvDirectives.length,
@@ -707,14 +719,21 @@ function verifyServiceEnvironmentFile(content) {
     "systemd/9router.service [Service] section must contain exactly one EnvironmentFile directive",
   );
   assert.equal(
-    serviceEnvDirectives[0],
+    serviceEnvDirectives[0].normalized,
     "EnvironmentFile=-%h/.9router/token-plan.env",
     "[Service] section EnvironmentFile directive must be -%h/.9router/token-plan.env",
+  );
+  assert.equal(
+    serviceEnvDirectives[0].value,
+    "-%h/.9router/token-plan.env",
+    "[Service] section EnvironmentFile directive value must be -%h/.9router/token-plan.env",
   );
 
   let totalEnvDirectives = 0;
   for (const [sec, directives] of Object.entries(parsed)) {
-    const matching = directives.filter((line) => line.startsWith("EnvironmentFile="));
+    const matching = directives
+      .map(parseEnvironmentFileDirective)
+      .filter(Boolean);
     totalEnvDirectives += matching.length;
     if (sec !== "Service") {
       assert.equal(
@@ -736,17 +755,24 @@ function verifyServiceEnvironmentFile(content) {
 
 const parsedSections = verifyServiceEnvironmentFile(serviceContent);
 assert.deepEqual(
-  (parsedSections["Service"] || []).filter((l) => l.startsWith("EnvironmentFile=")),
+  (parsedSections["Service"] || [])
+    .map(parseEnvironmentFileDirective)
+    .filter(Boolean)
+    .map((d) => d.normalized),
   ["EnvironmentFile=-%h/.9router/token-plan.env"],
   "[Service] section must contain exactly the token-plan EnvironmentFile directive",
 );
 assert.equal(
-  (parsedSections["Unit"] || []).filter((l) => l.startsWith("EnvironmentFile=")).length,
+  (parsedSections["Unit"] || [])
+    .map(parseEnvironmentFileDirective)
+    .filter(Boolean).length,
   0,
   "[Unit] section must contain zero EnvironmentFile directives",
 );
 assert.equal(
-  (parsedSections["Install"] || []).filter((l) => l.startsWith("EnvironmentFile=")).length,
+  (parsedSections["Install"] || [])
+    .map(parseEnvironmentFileDirective)
+    .filter(Boolean).length,
   0,
   "[Install] section must contain zero EnvironmentFile directives",
 );
@@ -780,6 +806,67 @@ assert.throws(
   "verifyServiceEnvironmentFile must reject service unit with duplicate EnvironmentFile in [Unit]",
 );
 
+// Regression assertions: whitespace-formatted EnvironmentFile outside [Service] or with invalid value
+const whitespaceUnitMovedService = serviceContent
+  .replace("EnvironmentFile=-%h/.9router/token-plan.env", "")
+  .replace("[Unit]", "[Unit]\nEnvironmentFile = -%h/.9router/token-plan.env");
+assert.throws(
+  () => verifyServiceEnvironmentFile(whitespaceUnitMovedService),
+  /systemd\/9router\.service \[Service\] section must contain exactly one EnvironmentFile directive/,
+  "verifyServiceEnvironmentFile must reject service unit where whitespace-formatted EnvironmentFile is in [Unit]",
+);
+
+const whitespaceInstallMovedService = serviceContent
+  .replace("EnvironmentFile=-%h/.9router/token-plan.env", "")
+  .replace("[Install]", "[Install]\nEnvironmentFile  =  -%h/.9router/token-plan.env");
+assert.throws(
+  () => verifyServiceEnvironmentFile(whitespaceInstallMovedService),
+  /systemd\/9router\.service \[Service\] section must contain exactly one EnvironmentFile directive/,
+  "verifyServiceEnvironmentFile must reject service unit where whitespace-formatted EnvironmentFile is in [Install]",
+);
+
+const whitespaceDuplicateUnitService = serviceContent.replace(
+  "[Unit]",
+  "[Unit]\nEnvironmentFile = -%h/.9router/token-plan.env",
+);
+assert.throws(
+  () => verifyServiceEnvironmentFile(whitespaceDuplicateUnitService),
+  /zero EnvironmentFile directives outside \[Service\]/,
+  "verifyServiceEnvironmentFile must reject service unit with whitespace-formatted duplicate EnvironmentFile in [Unit]",
+);
+
+const whitespaceDuplicateInstallService = serviceContent.replace(
+  "[Install]",
+  "[Install]\nEnvironmentFile   =   -%h/.9router/token-plan.env",
+);
+assert.throws(
+  () => verifyServiceEnvironmentFile(whitespaceDuplicateInstallService),
+  /zero EnvironmentFile directives outside \[Service\]/,
+  "verifyServiceEnvironmentFile must reject service unit with whitespace-formatted duplicate EnvironmentFile in [Install]",
+);
+
+const whitespaceServiceOnly = serviceContent.replace(
+  "EnvironmentFile=-%h/.9router/token-plan.env",
+  "EnvironmentFile  =  -%h/.9router/token-plan.env",
+);
+const parsedWhitespaceService = verifyServiceEnvironmentFile(whitespaceServiceOnly);
+assert.equal(
+  (parsedWhitespaceService["Service"] || [])
+    .map(parseEnvironmentFileDirective)
+    .filter(Boolean)[0].normalized,
+  "EnvironmentFile=-%h/.9router/token-plan.env",
+  "verifyServiceEnvironmentFile must normalize whitespace in [Service] EnvironmentFile directive",
+);
+
+const wrongValueService = serviceContent.replace(
+  "EnvironmentFile=-%h/.9router/token-plan.env",
+  "EnvironmentFile = -%h/.9router/other.env",
+);
+assert.throws(
+  () => verifyServiceEnvironmentFile(wrongValueService),
+  /\[Service\] section EnvironmentFile directive must be -%h\/\.9router\/token-plan\.env/,
+  "verifyServiceEnvironmentFile must reject [Service] EnvironmentFile directive with invalid path",
+);
 // Reject tracked literal secret values or secret names with assignments
 assert.ok(
   !serviceContent.includes("ALIBABA_TOKEN_PLAN_QUOTA_COOKIE"),
