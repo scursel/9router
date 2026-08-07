@@ -309,9 +309,9 @@ function qtpNum(value, fallback = NaN) {
 
 function qtpReset(value) {
   if (!value || Number(value) === 0) return null;
-  const date = new Date(
-    typeof value === "number" && value < 1e12 ? value * 1000 : value,
-  );
+  const num = Number(value);
+  const val = Number.isFinite(num) ? (num < 1e12 ? num * 1000 : num) : value;
+  const date = new Date(val);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
@@ -545,6 +545,65 @@ function qtpParseCline(planBody, usageItems, now = Date.now()) {
   };
 }
 
+function qtpFindAlibabaUsage(source, now = Date.now()) {
+  if (!source || typeof source !== "object") return null;
+  const dataObj =
+    source?.data?.DataV2?.data?.data ||
+    source?.DataV2?.data?.data ||
+    source?.data?.data ||
+    source?.data ||
+    source;
+  if (!dataObj || typeof dataObj !== "object") return null;
+
+  const has5Hour = "per5HourPercentage" in dataObj || "per5HourResetTime" in dataObj;
+  const has1Week = "per1WeekPercentage" in dataObj || "per1WeekResetTime" in dataObj;
+  if (!has5Hour && !has1Week) return null;
+
+  return {
+    fiveHour: {
+      percentage: dataObj.per5HourPercentage,
+      resetTime: dataObj.per5HourResetTime,
+    },
+    sevenDay: {
+      percentage: dataObj.per1WeekPercentage,
+      resetTime: dataObj.per1WeekResetTime,
+    },
+  };
+}
+
+function qtpAlibabaWindow(windowData, now = Date.now()) {
+  if (!windowData || typeof windowData !== "object") return null;
+  const rawPercent = windowData.percentage;
+  if (rawPercent === undefined || rawPercent === null) return null;
+
+  const num = qtpNum(rawPercent);
+  if (!Number.isFinite(num)) return null;
+
+  const pct = num >= 0 && num <= 1 ? num * 100 : num;
+  const used = Math.min(100, Math.max(0, Math.round(pct * 1000000) / 1000000));
+
+  const resetAt = qtpReset(windowData.resetTime);
+  return qtpQuota(used, 100, resetAt);
+}
+
+function qtpParseAlibabaTokenPlan(body, now = Date.now()) {
+  const source = body && typeof body === "object" ? body : null;
+  const usage = qtpFindAlibabaUsage(source, now);
+  if (!usage) return null;
+
+  const fiveHour = qtpAlibabaWindow(usage.fiveHour, now);
+  const sevenDay = qtpAlibabaWindow(usage.sevenDay, now);
+  if (!fiveHour || !sevenDay) return null;
+
+  return {
+    plan: "Alibaba Token Plan",
+    quotas: {
+      "5 hour window (%)": fiveHour,
+      "7 day window (%)": sevenDay,
+    },
+  };
+}
+
 function hash(content) {
   return crypto.createHash("sha256").update(content).digest("hex");
 }
@@ -594,6 +653,9 @@ function runtimeFunctions() {
     qtpNormalizeXai,
     qtpParseMimo,
     qtpParseCline,
+    qtpFindAlibabaUsage,
+    qtpAlibabaWindow,
+    qtpParseAlibabaTokenPlan,
   ]
     .map((fn) => fn.toString())
     .join("");
@@ -895,6 +957,9 @@ module.exports = {
   qtpParseOpenRouter,
   qtpNormalizeXai,
   qtpQuota,
+  qtpFindAlibabaUsage,
+  qtpAlibabaWindow,
+  qtpParseAlibabaTokenPlan,
 };
 
 if (require.main === module) main();
