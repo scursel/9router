@@ -1022,6 +1022,13 @@ function markerFor(relative) {
   return PROVIDERS_MARKER;
 }
 
+
+function buildLegacyPatched(relative, original) {
+  if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
+  if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
+  return buildProvidersPatched(original);
+}
+
 function buildPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
@@ -1097,6 +1104,11 @@ function apply() {
       if (hash(original) !== entry.expectedHash) {
         throw new Error(`Saved original hash mismatch for ${entry.relative}`);
       }
+      const expectedNew = buildPatched(entry.relative, original);
+      const expectedLegacy = buildLegacyPatched(entry.relative, original);
+      if (entry.content !== expectedNew && entry.content !== expectedLegacy) {
+        throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
+      }
       restore.push({ file: entry.file, original });
     }
     for (const entry of restore) atomicWrite(entry.file, entry.original);
@@ -1127,18 +1139,33 @@ function rollback() {
       throw new Error(`Original bundle unavailable for rollback: ${relative}`);
     }
     const original = fs.readFileSync(saved, "utf8");
-    const expected = buildPatched(relative, original);
-    return { relative, file, original, expected, current: fs.readFileSync(file, "utf8") };
+    const expectedHash = CATALOG_HASHES[relative];
+    if (hash(original) !== expectedHash) {
+      throw new Error(`Saved original hash mismatch for rollback: ${relative}`);
+    }
+    const expectedNew = buildPatched(relative, original);
+    const expectedLegacy = buildLegacyPatched(relative, original);
+    const current = fs.readFileSync(file, "utf8");
+    const hasMarker =
+      LEGACY_MARKERS.some((m) => current.includes(m)) ||
+      current.includes(PROVIDER_CATALOG_MARKER);
+    return {
+      relative,
+      file,
+      original,
+      expectedNew,
+      expectedLegacy,
+      current,
+      hasMarker,
+    };
   });
-  const patchedCount = entries.filter(({ relative, current }) =>
-    current.includes(markerFor(relative)),
-  ).length;
+  const patchedCount = entries.filter(({ hasMarker }) => hasMarker).length;
   if (patchedCount === 0) return false;
   if (patchedCount !== entries.length) {
     throw new Error("Partial quota patch detected; refusing unsafe rollback");
   }
   for (const entry of entries) {
-    if (entry.current !== entry.expected) {
+    if (entry.current !== entry.expectedNew && entry.current !== entry.expectedLegacy) {
       throw new Error(`Patched bundle changed unexpectedly: ${entry.relative}`);
     }
   }
@@ -1153,7 +1180,6 @@ function sanitize() {
     if (!fs.existsSync(file)) continue;
     const current = fs.readFileSync(file, "utf8");
     const hasMarker =
-      current.includes(markerFor(relative)) ||
       LEGACY_MARKERS.some((m) => current.includes(m)) ||
       current.includes(PROVIDER_CATALOG_MARKER);
     if (!hasMarker) continue;
@@ -1162,7 +1188,12 @@ function sanitize() {
       throw new Error(`Original bundle unavailable for sanitization: ${relative}`);
     }
     const original = fs.readFileSync(saved, "utf8");
-    if (current !== buildPatched(relative, original)) {
+    if (hash(original) !== CATALOG_HASHES[relative]) {
+      throw new Error(`Saved original hash mismatch for sanitization: ${relative}`);
+    }
+    const expectedNew = buildPatched(relative, original);
+    const expectedLegacy = buildLegacyPatched(relative, original);
+    if (current !== expectedNew && current !== expectedLegacy) {
       throw new Error(`Refusing to sanitize an unknown patched bundle: ${relative}`);
     }
     atomicWrite(file, original);
@@ -1222,7 +1253,9 @@ module.exports = {
   qtpAlibabaCache,
   qtpAlibaba,
   buildProviderCatalogPatched,
+  buildProvidersPatched,
   buildUiPatched,
+  buildLegacyPatched,
 };
 
 if (require.main === module) main();

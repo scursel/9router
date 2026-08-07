@@ -10,7 +10,9 @@ const path = require("path");
 const patchModule = require("../patches/quota-tracker.patch.js");
 const {
   buildProviderCatalogPatched,
+  buildProvidersPatched,
   buildUiPatched,
+  buildLegacyPatched,
 } = patchModule;
 
 assert.equal(
@@ -280,37 +282,90 @@ assert.ok(!server615Clean.includes("qwen-cloud-token-plan"), "rolled back 615.js
 const rb2 = runScratchPatch(["--rollback"]).trim();
 assert.equal(rb2, "already clean", "second rollback must return already clean");
 
-// Test B: Seed temporary bundle with legacy markers and expected original hash
-// Simulate legacy patch state: 615.js patched with legacy QuotaTrackerProviders:v2 marker
 const original615Content = fs.readFileSync(path.join(srcVariantDir, "server/chunks/615.js"), "utf8");
-const legacy615Content = original615Content + "/* QuotaTrackerProviders:v2 */";
-fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), legacy615Content, "utf8");
+const validLegacy615 = buildLegacyPatched("chunks/615.js", original615Content);
 
-// Saved original already exists in scratch originals from previous apply
-// Run apply -> should safely migrate legacy marker by restoring saved original and applying new marker
+// Test B1: Altered legacy bundle with QuotaTrackerProviders:v2 marker rejected by --apply without modifying disk
+const alteredLegacy615 = validLegacy615 + " /* altered legacy content */";
+fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), alteredLegacy615, "utf8");
+assert.throws(
+  () => runScratchPatch(["--apply"]),
+  /Unsafe partial patch recovery/,
+  "apply must reject altered legacy bundle",
+);
+const untouched615 = fs.readFileSync(path.join(serverRoot, "chunks/615.js"), "utf8");
+assert.equal(untouched615, alteredLegacy615, "rejected apply must preserve altered file without modification");
+
+// Test B2: Valid legacy provider-patched 615 bundle safely migrated by --apply
+fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), validLegacy615, "utf8");
 const migrateApply = runScratchPatch(["--apply"]).trim();
-assert.equal(migrateApply, "applied", "apply on legacy-marked bundle must safely migrate and apply");
-
+assert.equal(migrateApply, "applied", "apply on valid legacy bundle must safely migrate and apply");
 const migrated615 = fs.readFileSync(path.join(serverRoot, "chunks/615.js"), "utf8");
 assert.ok(migrated615.includes(providerCatalogMarker), "migrated 615.js must contain new PROVIDER_CATALOG_MARKER");
 assert.ok(migrated615.includes("qwen-cloud-token-plan"), "migrated 615.js must contain canonical provider");
 
-// Test C: Refuse partial or hash-mismatched residue
-// Corrupt a file with arbitrary non-legacy marker and modified content
-const corruptedFile = path.join(serverRoot, "chunks/615.js");
-fs.writeFileSync(corruptedFile, original615Content + "/* ArbitraryCorruptedMarker */", "utf8");
+// Test C: Rollback with legacy markers
+// C1: Partial legacy rollback refused
+runScratchPatch(["--rollback"]); // rollback to clean state
+fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), validLegacy615, "utf8");
 assert.throws(
-  () => runScratchPatch(["--apply"]),
-  /Unsupported bundle hash|Unsafe partial patch recovery/,
-  "must refuse arbitrary modified bundle without valid hash or recognized marker",
+  () => runScratchPatch(["--rollback"]),
+  /Partial quota patch detected; refusing unsafe rollback/,
+  "rollback must refuse partial legacy patch set",
 );
 
-// Test D: Sanitize restores patched files
-// Restore clean, apply, then sanitize
-fs.writeFileSync(corruptedFile, original615Content, "utf8");
-runScratchPatch(["--apply"]);
-const sanitizeOut = runScratchPatch(["--sanitize"]).trim();
-assert.ok(sanitizeOut.includes("sanitized"), "sanitize must restore patched files");
+// C2: Full legacy set rollback succeeds and restores originals
+// Seed all catalog files with valid legacy patched output from clean originals
+const allRelatives = [
+  "../static/chunks/1321-54939b699b5f3d07.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js",
+  "app/(dashboard)/dashboard/quota/page.js",
+  "app/api/provider-nodes/route.js",
+  "app/api/providers/client/route.js",
+  "app/api/providers/validate/route.js",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js",
+  "app/api/usage/[connectionId]/route.js",
+  "app/api/usage/providers/route.js",
+  "app/api/v1/audio/voices/route.js",
+  "app/api/v1/models/info/route.js",
+  "app/api/v1beta/models/route.js",
+  "chunks/4664.js",
+  "chunks/5619.js",
+  "chunks/615.js",
+  "chunks/4695.js",
+  "chunks/7211.js",
+  "chunks/827.js",
+  "chunks/869.js",
+  "chunks/8847.js",
+];
+for (const rel of allRelatives) {
+  const origFile = rel.startsWith("../static")
+    ? path.join(srcVariantDir, rel.slice(3))
+    : path.join(srcVariantDir, "server", rel);
+  const targetFile = path.join(serverRoot, rel);
+  const orig = fs.readFileSync(origFile, "utf8");
+  fs.writeFileSync(targetFile, buildLegacyPatched(rel, orig), "utf8");
+}
+const legacyRb = runScratchPatch(["--rollback"]).trim();
+assert.equal(legacyRb, "rolled back", "rollback on fully legacy-patched set must return rolled back");
+const cleanServer615 = fs.readFileSync(path.join(serverRoot, "chunks/615.js"), "utf8");
+assert.ok(!cleanServer615.includes(providersMarker), "rolled back 615.js must not contain legacy marker");
+
+// Test D: Sanitize handles valid legacy output
+fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), validLegacy615, "utf8");
+const sanitizeLegacyOut = runScratchPatch(["--sanitize"]).trim();
+assert.ok(sanitizeLegacyOut.includes("sanitized"), "sanitize must restore valid legacy output");
+const sanitized615 = fs.readFileSync(path.join(serverRoot, "chunks/615.js"), "utf8");
+assert.equal(sanitized615, original615Content, "sanitized 615.js must match clean original");
+
+// Sanitize rejects altered legacy bundle
+fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), alteredLegacy615, "utf8");
+assert.throws(
+  () => runScratchPatch(["--sanitize"]),
+  /Refusing to sanitize an unknown patched bundle/,
+  "sanitize must reject altered legacy bundle",
+);
+fs.writeFileSync(path.join(serverRoot, "chunks/615.js"), original615Content, "utf8");
 
 // Cleanup scratch root
 fs.rmSync(scratchRoot, { recursive: true, force: true });
