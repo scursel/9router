@@ -22,7 +22,7 @@ catalogs remain supported.
 - xAI/Grok subscription quota and prepaid balance.
 - Xiaomi MiMo paid and granted balances through a console session cookie.
 - ClinePass 5-hour, 7-day, and 30-day quota windows.
-
+- Alibaba Token Plan 5-hour and 7-day quota windows.
 ## Commands
 
 ```bash
@@ -31,6 +31,8 @@ node ~/.9router/quota-tracker.patch.js --apply
 node ~/.9router/quota-tracker.patch.js --rollback
 node ~/.9router/quota-tracker.patch.js --sanitize
 node ~/.9router/quota-tracker.test.js
+node tests/alibaba-token-plan.test.js
+node tests/quota-tracker-integration.test.js
 ```
 
 ## Update guard
@@ -72,3 +74,24 @@ to the xAI Management API by this patch. When the billing response provides
 `creditUsagePercent` and a weekly period but no absolute allotment, the tracker
 shows a 100-point percentage bar with the provider's period end as its reset
 time. It does not estimate or invent a credit total.
+
+## Alibaba Token Plan
+
+Configure local session credentials in `~/.9router/token-plan.env`:
+
+```bash
+install -d -m 700 ~/.9router
+umask 077
+cat > ~/.9router/token-plan.env <<'EOF'
+ALIBABA_TOKEN_PLAN_QUOTA_COOKIE=
+ALIBABA_TOKEN_PLAN_SEC_TOKEN=
+EOF
+chmod 600 ~/.9router/token-plan.env
+systemctl --user daemon-reload
+systemctl --user restart 9router.service
+```
+
+Values must be copied locally from the authenticated Alibaba console and never
+sent in chat. The dashboard reports `unavailable` when either value is empty or
+expired. The quota source is an internal console endpoint, not a public balance
+API.

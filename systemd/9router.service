@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+EnvironmentFile=-%h/.9router/token-plan.env
 ExecStart=%h/.hermes/profiles/zen/scripts/start-9router.sh
 Restart=always
 RestartSec=10
