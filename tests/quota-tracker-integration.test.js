@@ -249,6 +249,13 @@ for (const variant of VARIANTS_TO_TEST) {
     `buildUiPatched must fail on corrupted server quota page shape (${variant})`,
   );
 
+  // Assert that multiple matching card branches fail closed
+  const duplicateQuotaPage = originalQuotaPage + "\n" + originalQuotaPage;
+  assert.throws(
+    () => buildUiPatched(duplicateQuotaPage),
+    /Quota status card branch not found/,
+    `buildUiPatched must fail on duplicate server quota page branches (${variant})`,
+  );
   // Assert that UI currency marker is also present
   assert.ok(
     patchedQuotaPage.includes("/* QuotaTrackerCurrency:v2 */"),
@@ -335,6 +342,20 @@ for (const variant of VARIANTS_TO_TEST) {
         `buildUiPatched must fail on corrupted client quota chunk shape (${variant})`,
       );
 
+      // Assert that multiple matching card branches fail closed
+      const duplicateClientQuotaChunk = originalClientQuotaChunk + "\n" + originalClientQuotaChunk;
+      assert.throws(
+        () => buildUiPatched(duplicateClientQuotaChunk),
+        /Quota status card branch not found/,
+        `buildUiPatched must fail on duplicate client quota chunk branches (${variant})`,
+      );
+
+      const mixedClientAndServer = originalClientQuotaChunk + "\n" + originalQuotaPage;
+      assert.throws(
+        () => buildUiPatched(mixedClientAndServer),
+        /Quota status card branch not found/,
+        `buildUiPatched must fail on mixed client and server quota branches (${variant})`,
+      );
       assert.ok(
         patchedClientQuotaChunk.includes("/* QuotaTrackerCurrency:v2 */"),
         `patched client quota chunk ${f} must contain UI_MARKER (${variant})`,
@@ -357,6 +378,53 @@ for (const variant of VARIANTS_TO_TEST) {
   }
   assert.ok(clientQuotaPageFound, `Client quota page chunk must be found for ${variant}`);
 }
+
+// =========================================================================
+// 1b. Fail-closed rejection of ambiguous / multiple supported card branches
+// =========================================================================
+const currencyMarkerHeader = "/* QuotaTrackerCurrency:v2 */";
+const ssrCardBranchSnippet =
+  'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})';
+const clientWCardBranchSnippet =
+  'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(w,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})';
+const clientKCardBranchSnippet =
+  'o?.message?(0,a.jsx)("div",{className:"text-center py-5",children:(0,a.jsx)("p",{className:"text-xs text-text-muted",children:o.message})}):(0,a.jsx)(k,{quotas:f,compact:!0,sortMode:"default",showSortLabel:"codex"===r.provider&&"default"!==eN,onHideQuota:e=>e3(r.provider,e)})';
+
+assert.throws(
+  () => buildUiPatched(currencyMarkerHeader + "\n" + ssrCardBranchSnippet + "\n" + clientWCardBranchSnippet),
+  /Quota status card branch not found/,
+  "buildUiPatched must throw when input contains both SSR and client W card branches",
+);
+assert.throws(
+  () => buildUiPatched(currencyMarkerHeader + "\n" + clientWCardBranchSnippet + "\n" + clientKCardBranchSnippet),
+  /Quota status card branch not found/,
+  "buildUiPatched must throw when input contains both client W and client K card branches",
+);
+assert.throws(
+  () => buildUiPatched(currencyMarkerHeader + "\n" + ssrCardBranchSnippet + "\n" + clientKCardBranchSnippet),
+  /Quota status card branch not found/,
+  "buildUiPatched must throw when input contains both SSR and client K card branches",
+);
+assert.throws(
+  () => buildUiPatched(currencyMarkerHeader + "\n" + ssrCardBranchSnippet + "\n" + clientWCardBranchSnippet + "\n" + clientKCardBranchSnippet),
+  /Quota status card branch not found/,
+  "buildUiPatched must throw when input contains all three supported card branches",
+);
+assert.throws(
+  () => buildUiPatched(currencyMarkerHeader + "\n" + ssrCardBranchSnippet + "\n" + ssrCardBranchSnippet),
+  /Quota status card branch not found/,
+  "buildUiPatched must throw when input contains duplicate SSR card branches",
+);
+assert.throws(
+  () => buildUiPatched(currencyMarkerHeader + "\n" + clientWCardBranchSnippet + "\n" + clientWCardBranchSnippet),
+  /Quota status card branch not found/,
+  "buildUiPatched must throw when input contains duplicate client W card branches",
+);
+assert.throws(
+  () => buildUiPatched(currencyMarkerHeader + "\n" + clientKCardBranchSnippet + "\n" + clientKCardBranchSnippet),
+  /Quota status card branch not found/,
+  "buildUiPatched must throw when input contains duplicate client K card branches",
+);
 
 // =========================================================================
 // 2. Safe legacy marker migration and isolation tests

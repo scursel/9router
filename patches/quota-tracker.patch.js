@@ -1039,11 +1039,14 @@ function buildUiPatched(original) {
         UI_STATUS_MARKER,
     },
   ];
-  const match = matches.find(({ old }) => result.includes(old));
-  if (!match) {
+  const matched = matches.filter(({ old }) => result.includes(old));
+  if (
+    matched.length !== 1 ||
+    result.indexOf(matched[0].old) !== result.lastIndexOf(matched[0].old)
+  ) {
     throw new Error("Quota status card branch not found");
   }
-  return result.replace(match.old, match.replacement);
+  return result.replace(matched[0].old, matched[0].replacement);
 }
 
 function isCatalogTarget(relative) {
