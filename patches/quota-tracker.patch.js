@@ -293,6 +293,7 @@ const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
 const PROVIDER_CATALOG_MARKER = "/* QuotaTrackerAlibabaProvider:v1 */";
+const UI_STATUS_MARKER = "/* QuotaTrackerAlibabaStatus:v1 */";
 const LEGACY_MARKERS = [
   "/* QuotaTrackerPatch:v2 */",
   "/* QuotaTrackerProviders:v2 */",
@@ -991,7 +992,8 @@ function buildProvidersPatched(original) {
     + PROVIDERS_MARKER;
 }
 
-function buildUiPatched(original) {
+function buildLegacyUiPatched(original) {
+  if (original.includes(UI_MARKER)) return original;
   const matches = [
     {
       old: 'children:[a.used.toLocaleString()," / ",a.total>0?a.total.toLocaleString():"∞"]',
@@ -1011,21 +1013,35 @@ function buildUiPatched(original) {
   return original.replace(match.old, match.replacement);
 }
 
+function buildUiPatched(original) {
+  if (original.includes(UI_STATUS_MARKER)) return original;
+  let result = buildLegacyUiPatched(original);
+  const cardOld =
+    'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})';
+  const cardReplacement =
+    'i?.message?(0,d.jsx)("div",{className:"text-center py-5",children:(0,d.jsx)("p",{className:"text-xs text-text-muted",children:i.message})}):(0,d.jsxs)("div",{children:[i?.raw?.source?(0,d.jsx)("p",{className:"text-[10px] text-text-muted mb-1",children:`${i.raw.source} · ${i.raw.status||"ok"} · ${i.raw.fetchedAt||""}`}):null,(0,d.jsx)(r,{quotas:D,compact:!0,sortMode:"default",showSortLabel:"codex"===c.provider&&"default"!==at,onHideQuota:a=>aZ(c.provider,a)})]})' +
+    UI_STATUS_MARKER;
+  if (result.includes(cardOld)) {
+    result = result.replace(cardOld, cardReplacement);
+  }
+  return result;
+}
+
 function isCatalogTarget(relative) {
   return relative === "chunks/615.js" || relative.includes("1321-");
 }
 
 function markerFor(relative) {
   if (relative === USAGE_RELATIVE) return MAIN_MARKER;
+  if (relative === "app/(dashboard)/dashboard/quota/page.js") return UI_STATUS_MARKER;
   if (UI_RELATIVES.has(relative)) return UI_MARKER;
   if (isCatalogTarget(relative)) return PROVIDER_CATALOG_MARKER;
   return PROVIDERS_MARKER;
 }
 
-
 function buildLegacyPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
-  if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
+  if (UI_RELATIVES.has(relative)) return buildLegacyUiPatched(original);
   return buildProvidersPatched(original);
 }
 
@@ -1080,7 +1096,8 @@ function apply() {
   const hasLegacyOrPartial = entries.some(
     ({ content }) =>
       LEGACY_MARKERS.some((m) => content.includes(m)) ||
-      content.includes(PROVIDER_CATALOG_MARKER),
+      content.includes(PROVIDER_CATALOG_MARKER) ||
+      content.includes(UI_STATUS_MARKER),
   );
 
   if (hasLegacyOrPartial) {
@@ -1091,7 +1108,8 @@ function apply() {
 
       const hasRecognizedMarker =
         LEGACY_MARKERS.some((m) => entry.content.includes(m)) ||
-        entry.content.includes(PROVIDER_CATALOG_MARKER);
+        entry.content.includes(PROVIDER_CATALOG_MARKER) ||
+        entry.content.includes(UI_STATUS_MARKER);
       if (!hasRecognizedMarker) {
         throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
       }
@@ -1148,7 +1166,8 @@ function rollback() {
     const current = fs.readFileSync(file, "utf8");
     const hasMarker =
       LEGACY_MARKERS.some((m) => current.includes(m)) ||
-      current.includes(PROVIDER_CATALOG_MARKER);
+      current.includes(PROVIDER_CATALOG_MARKER) ||
+      current.includes(UI_STATUS_MARKER);
     return {
       relative,
       file,
@@ -1181,7 +1200,8 @@ function sanitize() {
     const current = fs.readFileSync(file, "utf8");
     const hasMarker =
       LEGACY_MARKERS.some((m) => current.includes(m)) ||
-      current.includes(PROVIDER_CATALOG_MARKER);
+      current.includes(PROVIDER_CATALOG_MARKER) ||
+      current.includes(UI_STATUS_MARKER);
     if (!hasMarker) continue;
     const saved = originalPath(relative);
     if (!fs.existsSync(saved)) {
