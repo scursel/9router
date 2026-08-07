@@ -629,6 +629,10 @@ function qtpSafeAlibabaReason(error) {
 async function qtpFetchAlibabaPayload(fetcher, cookie, secToken) {
   const url =
     "https://cs-data.qwencloud.com/data/api.json?action=IntlBroadScopeAspnGateway&product=sfm_bailian&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage&_v=undefined";
+  const feTraceId =
+    typeof crypto !== "undefined" && typeof crypto.randomBytes === "function"
+      ? crypto.randomBytes(16).toString("hex")
+      : Date.now().toString(36) + Math.random().toString(36).substring(2);
   const body = new URLSearchParams({
     product: "sfm_bailian",
     action: "IntlBroadScopeAspnGateway",
@@ -638,14 +642,20 @@ async function qtpFetchAlibabaPayload(fetcher, cookie, secToken) {
     params: JSON.stringify({
       Api: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
       V: "1.0",
-      Data: "{}",
-      cornerstoneParam: JSON.stringify({
-        product: "sfm_bailian",
-        action: "IntlBroadScopeAspnGateway",
-        sec_token: secToken,
-        region: "ap-southeast-1",
-        language: "en-US",
-      }),
+      Data: {
+        cornerstoneParam: {
+          feTraceId,
+          feURL: "https://home.qwencloud.com/billing/subscription/token-plan-individual",
+          protocol: "V2",
+          console: "ONE_CONSOLE",
+          productCode: "p_efm",
+          domain: "home.qwencloud.com",
+          consoleSite: "QWENCLOUD",
+          userNickName: "",
+          userPrincipalName: "",
+          xsp_lang: "en-US",
+        },
+      },
     }),
   }).toString();
 
@@ -809,7 +819,7 @@ function injectedCode(grokFn) {
     'async function qtpCommandCode(a,b){if(!a)return{message:"CommandCode API key not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.commandcode.ai/alpha/billing/credits",a,b),qtpGet("https://api.commandcode.ai/alpha/billing/subscriptions",a,b)]);if(!c.ok)return qtpError(c,"CommandCode");let e=qtpParseCommandCode(c.body,d.ok?d.body:null);return e||{message:"CommandCode connected. No quota data was returned.",quotas:{}}}' +
     'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
-    'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);if(!l.hasMore||!l.nextCursor)break;i=l.nextCursor;let n=new Date(m[m.length-1]?.createdAt).getTime();if(n<j)break}let o=qtpParseCline(d.body,h);return o||{message:"ClinePass connected. No usage data was returned.",quotas:{}}}' +
+    'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
     'async function qtpAlibaba(a){let b=await qtpFetchAlibabaTokenPlan((u,i)=>(0,d.proxyAwareFetch)(u,i,a.proxyOptions),qtpAlibabaCache,process.env,Date.now());return b&&"unavailable"===b.status?{message:"Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",quotas:{},status:"unavailable",source:"alibaba-console",reason:b.reason}:b}' +
     `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a)};`
   );

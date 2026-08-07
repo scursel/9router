@@ -407,12 +407,37 @@ async function runAdapterTests() {
     assert.equal(init.headers["Origin"], "https://home.qwencloud.com");
     assert.equal(init.headers["X-Requested-With"], "XMLHttpRequest");
     assert.equal(init.headers["Accept"], "application/json, text/plain, */*");
-    assert.ok(init.body.includes("product=sfm_bailian"));
-    assert.ok(init.body.includes("action=IntlBroadScopeAspnGateway"));
-    assert.ok(init.body.includes("sec_token=fixture-sec-token"));
-    assert.ok(init.body.includes("region=ap-southeast-1"));
-    assert.ok(init.body.includes("language=en-US"));
-    assert.ok(init.body.includes("cornerstoneParam"));
+    const searchParams = new URLSearchParams(init.body);
+    assert.equal(searchParams.get("product"), "sfm_bailian");
+    assert.equal(searchParams.get("action"), "IntlBroadScopeAspnGateway");
+    assert.equal(searchParams.get("sec_token"), "fixture-sec-token");
+    assert.equal(searchParams.get("region"), "ap-southeast-1");
+    assert.equal(searchParams.get("language"), "en-US");
+
+    const rawParams = searchParams.get("params");
+    assert.ok(rawParams, "params field must be present");
+    const parsedParams = JSON.parse(rawParams);
+    assert.equal(parsedParams.Api, "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage");
+    assert.equal(parsedParams.V, "1.0");
+    assert.equal(typeof parsedParams.Data, "object");
+    assert.notEqual(parsedParams.Data, null);
+    assert.notEqual(typeof parsedParams.Data, "string");
+    assert.equal(typeof parsedParams.Data.cornerstoneParam, "object");
+    assert.notEqual(parsedParams.Data.cornerstoneParam, null);
+
+    const cp = parsedParams.Data.cornerstoneParam;
+    assert.equal(typeof cp.feTraceId, "string");
+    assert.ok(cp.feTraceId.length > 0);
+    assert.equal(cp.feURL, "https://home.qwencloud.com/billing/subscription/token-plan-individual");
+    assert.equal(cp.protocol, "V2");
+    assert.equal(cp.console, "ONE_CONSOLE");
+    assert.equal(cp.productCode, "p_efm");
+    assert.equal(cp.domain, "home.qwencloud.com");
+    assert.equal(cp.consoleSite, "QWENCLOUD");
+    assert.equal(cp.userNickName, "");
+    assert.equal(cp.userPrincipalName, "");
+    assert.equal(cp.xsp_lang, "en-US");
+    assert.equal(cp.sec_token, undefined);
   }
 
   // 9. Failure modes without cache
