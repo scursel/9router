@@ -308,7 +308,9 @@ function qtpNum(value, fallback = NaN) {
 }
 
 function qtpReset(value) {
-  if (!value || Number(value) === 0) return null;
+  if (!value || typeof value === "boolean" || Array.isArray(value)) return null;
+  if (typeof value === "object" && !(value instanceof Date)) return null;
+  if (Number(value) === 0) return null;
   const num = Number(value);
   const val = Number.isFinite(num) ? (num < 1e12 ? num * 1000 : num) : value;
   const date = new Date(val);
@@ -545,15 +547,25 @@ function qtpParseCline(planBody, usageItems, now = Date.now()) {
   };
 }
 
+function qtpAlibabaPercent(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "boolean") return null;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed === "") return null;
+    const num = Number(trimmed);
+    return Number.isFinite(num) ? num : null;
+  }
+  return null;
+}
+
 function qtpFindAlibabaUsage(source, now = Date.now()) {
   if (!source || typeof source !== "object") return null;
-  const dataObj =
-    source?.data?.DataV2?.data?.data ||
-    source?.DataV2?.data?.data ||
-    source?.data?.data ||
-    source?.data ||
-    source;
-  if (!dataObj || typeof dataObj !== "object") return null;
+  const dataObj = source?.data?.DataV2?.data?.data;
+  if (!dataObj || typeof dataObj !== "object" || Array.isArray(dataObj)) return null;
 
   const has5Hour = "per5HourPercentage" in dataObj || "per5HourResetTime" in dataObj;
   const has1Week = "per1WeekPercentage" in dataObj || "per1WeekResetTime" in dataObj;
@@ -573,16 +585,15 @@ function qtpFindAlibabaUsage(source, now = Date.now()) {
 
 function qtpAlibabaWindow(windowData, now = Date.now()) {
   if (!windowData || typeof windowData !== "object") return null;
-  const rawPercent = windowData.percentage;
-  if (rawPercent === undefined || rawPercent === null) return null;
+  const num = qtpAlibabaPercent(windowData.percentage);
+  if (num === null) return null;
 
-  const num = qtpNum(rawPercent);
-  if (!Number.isFinite(num)) return null;
+  const resetAt = qtpReset(windowData.resetTime);
+  if (!resetAt) return null;
 
   const pct = num >= 0 && num <= 1 ? num * 100 : num;
   const used = Math.min(100, Math.max(0, Math.round(pct * 1000000) / 1000000));
 
-  const resetAt = qtpReset(windowData.resetTime);
   return qtpQuota(used, 100, resetAt);
 }
 
@@ -653,6 +664,7 @@ function runtimeFunctions() {
     qtpNormalizeXai,
     qtpParseMimo,
     qtpParseCline,
+    qtpAlibabaPercent,
     qtpFindAlibabaUsage,
     qtpAlibabaWindow,
     qtpParseAlibabaTokenPlan,
@@ -957,6 +969,7 @@ module.exports = {
   qtpParseOpenRouter,
   qtpNormalizeXai,
   qtpQuota,
+  qtpAlibabaPercent,
   qtpFindAlibabaUsage,
   qtpAlibabaWindow,
   qtpParseAlibabaTokenPlan,
