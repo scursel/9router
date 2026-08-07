@@ -292,6 +292,94 @@ const ORIGINALS_DIR = path.join(__dirname, `quota-tracker-originals/${CATALOG_VA
 const MAIN_MARKER = "/* QuotaTrackerPatch:v2 */";
 const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
+const PROVIDER_CATALOG_MARKER = "/* QuotaTrackerAlibabaProvider:v1 */";
+const LEGACY_MARKERS = [
+  "/* QuotaTrackerPatch:v2 */",
+  "/* QuotaTrackerProviders:v2 */",
+  "/* QuotaTrackerCurrency:v2 */",
+];
+
+const CANONICAL_PROVIDER = {
+  id: "qwen-cloud-token-plan",
+  alias: "qct",
+  display: {
+    name: "Qwen Cloud Token Plan",
+    icon: "cloud",
+    color: "#FF6A00",
+    textIcon: "QCT",
+    website: "https://www.alibabacloud.com/help/en/model-studio/token-plan-overview",
+  },
+  category: "apikey",
+  transport: {
+    format: "openai",
+    baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+    auth: { combined: true, header: "Authorization", scheme: "bearer" },
+  },
+  models: [
+    { id: "qwen3.8-max-preview", name: "Qwen3.8 Max Preview", supportsReasoning: true, supportsVision: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 65536 },
+    { id: "qwen3.7-max", name: "Qwen3.7 Max", supportsReasoning: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 65536 },
+    { id: "qwen3.7-plus", name: "Qwen3.7 Plus", supportsReasoning: true, supportsVision: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 65536 },
+    { id: "qwen3.6-flash", name: "Qwen3.6 Flash", supportsReasoning: true, supportsVision: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 32768 },
+    { id: "glm-5.2", name: "GLM 5.2", supportsReasoning: true, toolCalling: true, contextLength: 1000000, maxOutputTokens: 16384 },
+    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", supportsReasoning: true, toolCalling: true, contextLength: 163840, maxOutputTokens: 32768 },
+  ],
+  features: { usage: true, usageApikey: true },
+};
+
+function buildProviderCatalogPatched(original) {
+  if (original.includes(PROVIDER_CATALOG_MARKER)) return original;
+
+  // Server chunk chunks/615.js
+  const requireMatch = original.match(/var d=c\(\d+\);/);
+  if (requireMatch) {
+    const serverEntry = JSON.stringify(CANONICAL_PROVIDER);
+    const injectCode = `{let a=${serverEntry};d.A.some(b=>b.id===a.id)||d.A.push(a);}`;
+    return (
+      original.replace(requireMatch[0], requireMatch[0] + injectCode) +
+      PROVIDER_CATALOG_MARKER
+    );
+  }
+
+  // Client chunk 1321-*.js
+  const anchorIdx = original.indexOf('id:"alicode-intl"');
+  if (anchorIdx >= 0) {
+    let arrStart = -1;
+    for (let i = anchorIdx; i >= 0; i--) {
+      if (original[i] === "[" && (original[i - 1] === "=" || original[i - 1] === ":")) {
+        arrStart = i;
+        break;
+      }
+    }
+    if (arrStart < 0) {
+      throw new Error("Client provider array opening delimiter not found");
+    }
+    let depth = 0;
+    let arrEnd = -1;
+    for (let i = arrStart; i < original.length; i++) {
+      if (original[i] === "[") depth++;
+      else if (original[i] === "]") {
+        depth--;
+        if (depth === 0) {
+          arrEnd = i;
+          break;
+        }
+      }
+    }
+    if (arrEnd < 0) {
+      throw new Error("Client provider array closing delimiter not found");
+    }
+    const clientEntry = JSON.stringify(CANONICAL_PROVIDER);
+    return (
+      original.slice(0, arrEnd) +
+      "," +
+      clientEntry +
+      original.slice(arrEnd) +
+      PROVIDER_CATALOG_MARKER
+    );
+  }
+
+  throw new Error("Target chunk for provider catalog patch not recognized");
+}
 // Legacy 0.5.40 marker strings kept for stripV1 cleanup helpers.
 const USAGE_ALLOW_MARKER =
   "x=d.A.filter(a=>a.features?.usage).map(a=>a.id)";
@@ -923,15 +1011,23 @@ function buildUiPatched(original) {
   return original.replace(match.old, match.replacement);
 }
 
+function isCatalogTarget(relative) {
+  return relative === "chunks/615.js" || relative.includes("1321-");
+}
+
 function markerFor(relative) {
   if (relative === USAGE_RELATIVE) return MAIN_MARKER;
   if (UI_RELATIVES.has(relative)) return UI_MARKER;
+  if (isCatalogTarget(relative)) return PROVIDER_CATALOG_MARKER;
   return PROVIDERS_MARKER;
 }
 
 function buildPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
+  if (isCatalogTarget(relative)) {
+    return buildProvidersPatched(buildProviderCatalogPatched(original));
+  }
   return buildProvidersPatched(original);
 }
 
@@ -974,25 +1070,32 @@ function apply() {
     }
     return false;
   }
-  if (patchedCount !== 0) {
+  const hasLegacyOrPartial = entries.some(
+    ({ content }) =>
+      LEGACY_MARKERS.some((m) => content.includes(m)) ||
+      content.includes(PROVIDER_CATALOG_MARKER),
+  );
+
+  if (hasLegacyOrPartial) {
     const restore = [];
     for (const entry of entries) {
-      if (!entry.content.includes(markerFor(entry.relative))) {
-        if (hash(entry.content) !== entry.expectedHash) {
-          throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
-        }
-        continue;
+      const isClean = hash(entry.content) === entry.expectedHash;
+      if (isClean) continue;
+
+      const hasRecognizedMarker =
+        LEGACY_MARKERS.some((m) => entry.content.includes(m)) ||
+        entry.content.includes(PROVIDER_CATALOG_MARKER);
+      if (!hasRecognizedMarker) {
+        throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
       }
+
       const saved = originalPath(entry.relative);
       if (!fs.existsSync(saved)) {
         throw new Error(`Original bundle unavailable for recovery: ${entry.relative}`);
       }
       const original = fs.readFileSync(saved, "utf8");
-      if (
-        hash(original) !== entry.expectedHash ||
-        entry.content !== buildPatched(entry.relative, original)
-      ) {
-        throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
+      if (hash(original) !== entry.expectedHash) {
+        throw new Error(`Saved original hash mismatch for ${entry.relative}`);
       }
       restore.push({ file: entry.file, original });
     }
@@ -1049,7 +1152,11 @@ function sanitize() {
     const file = path.join(SERVER_ROOT, relative);
     if (!fs.existsSync(file)) continue;
     const current = fs.readFileSync(file, "utf8");
-    if (!current.includes(markerFor(relative))) continue;
+    const hasMarker =
+      current.includes(markerFor(relative)) ||
+      LEGACY_MARKERS.some((m) => current.includes(m)) ||
+      current.includes(PROVIDER_CATALOG_MARKER);
+    if (!hasMarker) continue;
     const saved = originalPath(relative);
     if (!fs.existsSync(saved)) {
       throw new Error(`Original bundle unavailable for sanitization: ${relative}`);
@@ -1114,6 +1221,8 @@ module.exports = {
   qtpFetchAlibabaTokenPlan,
   qtpAlibabaCache,
   qtpAlibaba,
+  buildProviderCatalogPatched,
+  buildUiPatched,
 };
 
 if (require.main === module) main();
