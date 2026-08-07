@@ -669,20 +669,115 @@ const serviceFile = path.join(__dirname, "../systemd/9router.service");
 assert.ok(fs.existsSync(serviceFile), "systemd/9router.service must exist");
 const serviceContent = fs.readFileSync(serviceFile, "utf8");
 
-const serviceLines = serviceContent.split("\n");
-const envFileDirectives = serviceLines
-  .map((line) => line.trim())
-  .filter((line) => line.startsWith("EnvironmentFile="));
+function parseSystemdSections(content) {
+  const sections = Object.create(null);
+  let currentSection = null;
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || line.startsWith(";")) {
+      continue;
+    }
+    const sectionMatch = line.match(/^\[([^\]]+)\]$/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1].trim();
+      if (!sections[currentSection]) {
+        sections[currentSection] = [];
+      }
+      continue;
+    }
+    const targetSection = currentSection || "__global__";
+    if (!sections[targetSection]) {
+      sections[targetSection] = [];
+    }
+    sections[targetSection].push(line);
+  }
+  return sections;
+}
 
-assert.equal(
-  envFileDirectives.length,
-  1,
-  "systemd/9router.service must contain exactly one EnvironmentFile directive",
+function verifyServiceEnvironmentFile(content) {
+  const parsed = parseSystemdSections(content);
+  const serviceDirectives = parsed["Service"] || [];
+  const serviceEnvDirectives = serviceDirectives.filter((line) =>
+    line.startsWith("EnvironmentFile="),
+  );
+
+  assert.equal(
+    serviceEnvDirectives.length,
+    1,
+    "systemd/9router.service [Service] section must contain exactly one EnvironmentFile directive",
+  );
+  assert.equal(
+    serviceEnvDirectives[0],
+    "EnvironmentFile=-%h/.9router/token-plan.env",
+    "[Service] section EnvironmentFile directive must be -%h/.9router/token-plan.env",
+  );
+
+  let totalEnvDirectives = 0;
+  for (const [sec, directives] of Object.entries(parsed)) {
+    const matching = directives.filter((line) => line.startsWith("EnvironmentFile="));
+    totalEnvDirectives += matching.length;
+    if (sec !== "Service") {
+      assert.equal(
+        matching.length,
+        0,
+        `systemd/9router.service must contain zero EnvironmentFile directives outside [Service], found ${matching.length} in [${sec}]`,
+      );
+    }
+  }
+
+  assert.equal(
+    totalEnvDirectives,
+    1,
+    "systemd/9router.service must contain exactly one EnvironmentFile directive across all sections",
+  );
+
+  return parsed;
+}
+
+const parsedSections = verifyServiceEnvironmentFile(serviceContent);
+assert.deepEqual(
+  (parsedSections["Service"] || []).filter((l) => l.startsWith("EnvironmentFile=")),
+  ["EnvironmentFile=-%h/.9router/token-plan.env"],
+  "[Service] section must contain exactly the token-plan EnvironmentFile directive",
 );
 assert.equal(
-  envFileDirectives[0],
-  "EnvironmentFile=-%h/.9router/token-plan.env",
-  "EnvironmentFile directive must be optional -%h/.9router/token-plan.env",
+  (parsedSections["Unit"] || []).filter((l) => l.startsWith("EnvironmentFile=")).length,
+  0,
+  "[Unit] section must contain zero EnvironmentFile directives",
+);
+assert.equal(
+  (parsedSections["Install"] || []).filter((l) => l.startsWith("EnvironmentFile=")).length,
+  0,
+  "[Install] section must contain zero EnvironmentFile directives",
+);
+
+// Regression assertions: moving directive outside [Service] or duplicating in other sections must fail verification
+const unitMovedService = serviceContent
+  .replace("EnvironmentFile=-%h/.9router/token-plan.env", "")
+  .replace("[Unit]", "[Unit]\nEnvironmentFile=-%h/.9router/token-plan.env");
+assert.throws(
+  () => verifyServiceEnvironmentFile(unitMovedService),
+  /systemd\/9router\.service \[Service\] section must contain exactly one EnvironmentFile directive/,
+  "verifyServiceEnvironmentFile must reject service unit where EnvironmentFile is in [Unit]",
+);
+
+const installMovedService = serviceContent
+  .replace("EnvironmentFile=-%h/.9router/token-plan.env", "")
+  .replace("[Install]", "[Install]\nEnvironmentFile=-%h/.9router/token-plan.env");
+assert.throws(
+  () => verifyServiceEnvironmentFile(installMovedService),
+  /systemd\/9router\.service \[Service\] section must contain exactly one EnvironmentFile directive/,
+  "verifyServiceEnvironmentFile must reject service unit where EnvironmentFile is in [Install]",
+);
+
+const duplicateUnitService = serviceContent.replace(
+  "[Unit]",
+  "[Unit]\nEnvironmentFile=-%h/.9router/token-plan.env",
+);
+assert.throws(
+  () => verifyServiceEnvironmentFile(duplicateUnitService),
+  /zero EnvironmentFile directives outside \[Service\]/,
+  "verifyServiceEnvironmentFile must reject service unit with duplicate EnvironmentFile in [Unit]",
 );
 
 // Reject tracked literal secret values or secret names with assignments
@@ -698,5 +793,4 @@ assert.ok(
   !/ALIBABA_TOKEN_PLAN_[A-Z_]+\s*=/i.test(serviceContent),
   "systemd/9router.service must not contain literal secret assignments",
 );
-
 console.log("quota tracker integration tests: ok");
