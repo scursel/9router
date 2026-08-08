@@ -309,11 +309,15 @@ const CANONICAL_PROVIDER = {
     color: "#FF6A00",
     textIcon: "QCT",
     website: "https://www.alibabacloud.com/help/en/model-studio/token-plan-overview",
+    notice: {
+      apiKeyUrl: "https://www.alibabacloud.com/help/en/model-studio/token-plan-overview",
+    },
   },
   category: "apikey",
   transport: {
     format: "openai",
     baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+    validateUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models",
     auth: { combined: true, header: "Authorization", scheme: "bearer" },
   },
   models: [
@@ -330,31 +334,31 @@ const CANONICAL_PROVIDER = {
 function buildProviderCatalogPatched(original) {
   if (original.includes(PROVIDER_CATALOG_MARKER)) return original;
 
+  let result = original;
+
   // Server bundles that embed module 40615.
-  const catalogModuleIdx = original.indexOf("40615:(");
+  const catalogModuleIdx = result.indexOf("40615:(");
   const serverRequireMatch =
     catalogModuleIdx >= 0
-      ? original.slice(catalogModuleIdx).match(/var d=c\(\d+\);/)
+      ? result.slice(catalogModuleIdx).match(/var d=c\(\d+\);/)
       : null;
   if (serverRequireMatch) {
     const serverEntry = JSON.stringify(CANONICAL_PROVIDER);
     const injectCode = `{let a=${serverEntry};d.A.some(b=>b.id===a.id)||d.A.push(a);}`;
     const insertAt =
       catalogModuleIdx + serverRequireMatch.index + serverRequireMatch[0].length;
-    return (
-      original.slice(0, insertAt) +
+    result =
+      result.slice(0, insertAt) +
       injectCode +
-      original.slice(insertAt) +
-      PROVIDER_CATALOG_MARKER
-    );
+      result.slice(insertAt);
   }
 
   // Client chunk 1321-*.js
-  const anchorIdx = original.indexOf('id:"alicode-intl"');
-  if (anchorIdx >= 0) {
+  const anchorIdx = result.indexOf('id:"alicode-intl"');
+  if (anchorIdx >= 0 && !serverRequireMatch) {
     let arrStart = -1;
     for (let i = anchorIdx; i >= 0; i--) {
-      if (original[i] === "[" && (original[i - 1] === "=" || original[i - 1] === ":")) {
+      if (result[i] === "[" && (result[i - 1] === "=" || result[i - 1] === ":")) {
         arrStart = i;
         break;
       }
@@ -364,9 +368,9 @@ function buildProviderCatalogPatched(original) {
     }
     let depth = 0;
     let arrEnd = -1;
-    for (let i = arrStart; i < original.length; i++) {
-      if (original[i] === "[") depth++;
-      else if (original[i] === "]") {
+    for (let i = arrStart; i < result.length; i++) {
+      if (result[i] === "[") depth++;
+      else if (result[i] === "]") {
         depth--;
         if (depth === 0) {
           arrEnd = i;
@@ -378,16 +382,43 @@ function buildProviderCatalogPatched(original) {
       throw new Error("Client provider array closing delimiter not found");
     }
     const clientEntry = JSON.stringify(CANONICAL_PROVIDER);
-    return (
-      original.slice(0, arrEnd) +
+    result =
+      result.slice(0, arrEnd) +
       "," +
       clientEntry +
-      original.slice(arrEnd) +
-      PROVIDER_CATALOG_MARKER
+      result.slice(arrEnd);
+  }
+
+  // Alias lookup patch in module 57729 (in validate/route.js and similar)
+  const obMatch = "a.name?.toLowerCase()===b.toLowerCase()";
+  if (result.includes("57729:(") && result.includes(obMatch)) {
+    result = result.replace(
+      obMatch,
+      "a.name?.toLowerCase()===b.toLowerCase()||a.alias?.toLowerCase()===b.toLowerCase()||a.uiAlias?.toLowerCase()===b.toLowerCase()"
     );
   }
 
-  throw new Error("Target chunk for provider catalog patch not recognized");
+  // Test route switch case in chunks/827.js
+  const nvidiaCase = 'case"nvidia":{let c=await t("https://integrate.api.nvidia.com/v1/models"';
+  if (result.includes(nvidiaCase)) {
+    const qctTestCode = 'case"qwen-cloud-token-plan":case"qct":{let c=await t("https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models",{headers:{Authorization:`Bearer ${a.apiKey}`}},b);return{valid:c.ok,error:c.ok?null:"Invalid API key"}}';
+    result = result.replace(nvidiaCase, qctTestCode + nvidiaCase);
+  }
+  // Validate route switch case in validate/route.js
+  const nvidiaMulti = 'case"xiaomi-tokenplan":case"nvidia":';
+  if (result.includes(nvidiaMulti)) {
+    result = result.replace(nvidiaMulti, 'case"xiaomi-tokenplan":case"nvidia":case"qwen-cloud-token-plan":case"qct":');
+    const xmtpMap = '"xiaomi-tokenplan":`${(0,h.Yg)({providerSpecificData:o})}/models`';
+    if (result.includes(xmtpMap)) {
+      result = result.replace(xmtpMap, xmtpMap + ',"qwen-cloud-token-plan":"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models","qct":"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models"');
+    }
+  }
+
+  if (result === original) {
+    throw new Error("Target chunk for provider catalog patch not recognized");
+  }
+
+  return result + PROVIDER_CATALOG_MARKER;
 }
 // Legacy 0.5.40 marker strings kept for stripV1 cleanup helpers.
 const USAGE_ALLOW_MARKER =
@@ -644,204 +675,121 @@ function qtpParseCline(planBody, usageItems, now = Date.now()) {
   };
 }
 
-function qtpAlibabaPercent(raw) {
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === "boolean") return null;
-  if (typeof raw === "number") {
-    return Number.isFinite(raw) ? raw : null;
-  }
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (trimmed === "") return null;
-    const num = Number(trimmed);
-    return Number.isFinite(num) ? num : null;
-  }
-  return null;
-}
-
-function qtpFindAlibabaUsage(source, now = Date.now()) {
-  if (!source || typeof source !== "object") return null;
-  const dataObj = source?.data?.DataV2?.data?.data;
-  if (!dataObj || typeof dataObj !== "object" || Array.isArray(dataObj)) return null;
-
-  const has5Hour = "per5HourPercentage" in dataObj || "per5HourResetTime" in dataObj;
-  const has1Week = "per1WeekPercentage" in dataObj || "per1WeekResetTime" in dataObj;
-  if (!has5Hour && !has1Week) return null;
-
-  return {
-    fiveHour: {
-      percentage: dataObj.per5HourPercentage,
-      resetTime: dataObj.per5HourResetTime,
-    },
-    sevenDay: {
-      percentage: dataObj.per1WeekPercentage,
-      resetTime: dataObj.per1WeekResetTime,
-    },
-  };
-}
-
-function qtpAlibabaWindow(windowData, now = Date.now()) {
-  if (!windowData || typeof windowData !== "object") return null;
-  const num = qtpAlibabaPercent(windowData.percentage);
-  if (num === null) return null;
-
-  const resetAt = qtpReset(windowData.resetTime);
-  if (!resetAt) return null;
-
-  const pct = num >= 0 && num <= 1 ? num * 100 : num;
-  const used = Math.min(100, Math.max(0, Math.round(pct * 1000000) / 1000000));
-
-  return qtpQuota(used, 100, resetAt);
-}
-
-function qtpParseAlibabaTokenPlan(body, now = Date.now()) {
-  const source = body && typeof body === "object" ? body : null;
-  const usage = qtpFindAlibabaUsage(source, now);
-  if (!usage) return null;
-
-  const fiveHour = qtpAlibabaWindow(usage.fiveHour, now);
-  const sevenDay = qtpAlibabaWindow(usage.sevenDay, now);
-  if (!fiveHour || !sevenDay) return null;
-
-  return {
-    plan: "Alibaba Token Plan",
-    quotas: {
-      "5 hour window (%)": fiveHour,
-      "7 day window (%)": sevenDay,
-    },
-  };
-}
-
-const qtpAlibabaCache = new Map();
-
-function qtpSafeAlibabaReason(error) {
-  const msg = String(error?.message || error || "");
-  if (msg.includes("session unavailable")) return "session unavailable";
-  if (msg.includes("authentication failed") || msg.includes("401") || msg.includes("403")) {
-    return "authentication failed";
-  }
-  return "quota unavailable";
-}
-
-async function qtpFetchAlibabaPayload(fetcher, cookie, secToken) {
-  const url =
-    "https://cs-data.qwencloud.com/data/api.json?action=IntlBroadScopeAspnGateway&product=sfm_bailian&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage&_v=undefined";
-  const feTraceId =
-    typeof crypto !== "undefined" && typeof crypto.randomBytes === "function"
-      ? crypto.randomBytes(16).toString("hex")
-      : Date.now().toString(36) + Math.random().toString(36).substring(2);
-  const body = new URLSearchParams({
-    product: "sfm_bailian",
-    action: "IntlBroadScopeAspnGateway",
-    sec_token: secToken,
-    region: "ap-southeast-1",
-    language: "en-US",
-    params: JSON.stringify({
-      Api: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage",
-      V: "1.0",
-      Data: {
-        cornerstoneParam: {
-          feTraceId,
-          feURL: "https://home.qwencloud.com/billing/subscription/token-plan-individual",
-          protocol: "V2",
-          console: "ONE_CONSOLE",
-          productCode: "p_efm",
-          domain: "home.qwencloud.com",
-          consoleSite: "QWENCLOUD",
-          userNickName: "",
-          userPrincipalName: "",
-          xsp_lang: "en-US",
-        },
-      },
-    }),
-  }).toString();
-
-  let res;
-  try {
-    res = await fetcher(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": cookie,
-        "Referer": "https://home.qwencloud.com/billing/subscription/token-plan-individual",
-        "Origin": "https://home.qwencloud.com",
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json, text/plain, */*",
-      },
-      body,
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch (err) {
-    throw new Error("quota unavailable");
-  }
-
-  if (res.status === 401 || res.status === 403) {
-    throw new Error("authentication failed");
-  }
-  if (!res.ok) {
-    throw new Error("quota unavailable");
-  }
-
-  try {
-    return await res.json();
-  } catch (err) {
-    throw new Error("quota unavailable");
-  }
-}
-
-async function qtpFetchAlibabaTokenPlan(fetcher, cache, env, now = Date.now()) {
-  const cookie = String(env?.ALIBABA_TOKEN_PLAN_QUOTA_COOKIE || "").trim();
-  const secToken = String(env?.ALIBABA_TOKEN_PLAN_SEC_TOKEN || "").trim();
-  if (!cookie || !secToken) {
-    return { status: "unavailable", source: "alibaba-console", reason: "session unavailable" };
-  }
-
-  const cached = cache.get("qwen-cloud-token-plan");
-  if (cached && now - cached.fetchedAt < 60_000) {
-    return { ...cached.value, status: "ok" };
-  }
-
-  try {
-    const payload = await qtpFetchAlibabaPayload(fetcher, cookie, secToken);
-    const parsed = qtpParseAlibabaTokenPlan(payload, now);
-    if (!parsed) throw new Error("quota unavailable");
-    const value = {
-      ...parsed,
-      status: "ok",
-      source: "alibaba-console",
-      fetchedAt: new Date(now).toISOString(),
+function qtpLocalQuota(used, limit) {
+  const safeUsed = Math.max(0, qtpNum(used, 0));
+  const safeLimit = Math.max(0, qtpNum(limit, 0));
+  if (safeLimit > 0) {
+    const remaining = Math.max(0, safeLimit - safeUsed);
+    return {
+      used: safeUsed,
+      total: safeLimit,
+      remainingPercentage: (remaining / safeLimit) * 100,
+      resetAt: null,
+      unlimited: false,
     };
-    cache.set("qwen-cloud-token-plan", { value, fetchedAt: now });
-    return value;
-  } catch (error) {
-    if (cached && now - cached.fetchedAt <= 300_000) {
-      return { ...cached.value, status: "stale" };
+  }
+  return {
+    used: safeUsed,
+    total: 0,
+    resetAt: null,
+    unlimited: true,
+  };
+}
+
+function qtpCalcSlidingWindowUsage(records, now = Date.now(), limits = {}) {
+  const fiveHourMs = 5 * 3600 * 1000;
+  const sevenDayMs = 7 * 86400 * 1000;
+  const cutoff5h = now - fiveHourMs;
+  const cutoff7d = now - sevenDayMs;
+
+  let fiveHourTokens = 0;
+  let sevenDayTokens = 0;
+
+  if (Array.isArray(records)) {
+    for (const r of records) {
+      const p = qtpNum(r?.promptTokens, 0);
+      const c = qtpNum(r?.completionTokens, 0);
+      const tokens = p + c;
+      const t =
+        typeof r?.timestamp === "number"
+          ? r.timestamp
+          : r?.timestamp
+          ? new Date(r.timestamp).getTime()
+          : NaN;
+      if (!Number.isFinite(t)) continue;
+      if (t >= cutoff7d && t <= now) {
+        sevenDayTokens += tokens;
+        if (t >= cutoff5h) {
+          fiveHourTokens += tokens;
+        }
+      }
     }
-    return {
-      status: "unavailable",
-      source: "alibaba-console",
-      reason: qtpSafeAlibabaReason(error),
-    };
   }
+
+  const limit5h = qtpNum(
+    limits?.limit5h || limits?.quotaLimit5h || limits?.fiveHourLimit,
+    0,
+  );
+  const limit7d = qtpNum(
+    limits?.limit7d || limits?.quotaLimit7d || limits?.sevenDayLimit,
+    0,
+  );
+
+  return {
+    plan: "Alibaba Token Plan (medido pelo router)",
+    status: "ok",
+    source: "router-local",
+    fetchedAt: new Date(now).toISOString(),
+    quotas: {
+      "Consumo 5h (medido local)": qtpLocalQuota(fiveHourTokens, limit5h),
+      "Consumo 7d (medido local)": qtpLocalQuota(sevenDayTokens, limit7d),
+    },
+  };
 }
 
-async function qtpAlibaba(a) {
-  const res = await qtpFetchAlibabaTokenPlan(
-    (url, init) => (0, d.proxyAwareFetch)(url, init, a.proxyOptions),
-    qtpAlibabaCache,
-    process.env,
-    Date.now(),
-  );
-  if (res && res.status === "unavailable") {
-    return {
-      message: "Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",
-      quotas: {},
-      status: "unavailable",
-      source: "alibaba-console",
-      reason: res.reason,
-    };
+async function qtpAlibaba(arg, now = Date.now()) {
+  const connId = String(arg?.connectionId || arg?.id || "").trim();
+  const psd = arg?.providerSpecificData || {};
+  const sevenDayMs = 7 * 86400 * 1000;
+  const cutoff7dIso = new Date(now - sevenDayMs).toISOString();
+
+  let rows = [];
+  try {
+    let db = globalThis._dbAdapter?.instance || global._dbAdapter?.instance;
+    if (!db && typeof c === "function") {
+      try {
+        const dbMod = c(36366);
+        if (dbMod && typeof dbMod.c === "function") {
+          db = await dbMod.c();
+        }
+      } catch (_) {}
+    }
+    if (!db && typeof __webpack_require__ === "function") {
+      try {
+        const dbMod = __webpack_require__(36366);
+        if (dbMod && typeof dbMod.c === "function") {
+          db = await dbMod.c();
+        }
+      } catch (_) {}
+    }
+    if (db && typeof db.all === "function") {
+      if (connId) {
+        rows = db.all(
+          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE (provider = 'qwen-cloud-token-plan' OR connectionId = ?) AND timestamp >= ?",
+          [connId, cutoff7dIso],
+        );
+      } else {
+        rows = db.all(
+          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE provider = 'qwen-cloud-token-plan' AND timestamp >= ?",
+          [cutoff7dIso],
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("[LocalQuotaMeter] DB query error:", err);
   }
-  return res;
+
+  return qtpCalcSlidingWindowUsage(rows, now, psd);
 }
 function hash(content) {
   return crypto.createHash("sha256").update(content).digest("hex");
@@ -892,13 +840,9 @@ function runtimeFunctions() {
     qtpNormalizeXai,
     qtpParseMimo,
     qtpParseCline,
-    qtpAlibabaPercent,
-    qtpFindAlibabaUsage,
-    qtpAlibabaWindow,
-    qtpParseAlibabaTokenPlan,
-    qtpSafeAlibabaReason,
-    qtpFetchAlibabaPayload,
-    qtpFetchAlibabaTokenPlan,
+    qtpLocalQuota,
+    qtpCalcSlidingWindowUsage,
+    qtpAlibaba,
   ]
     .map((fn) => fn.toString())
     .join("");
@@ -907,7 +851,6 @@ function runtimeFunctions() {
 function injectedCode(grokFn) {
   return (
     MAIN_MARKER +
-    'let qtpAlibabaCache=new Map();' +
     runtimeFunctions() +
     'async function qtpGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Authorization:"Bearer "+b,Accept:"application/json"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'function qtpError(a,b){return{message:b+" quota API "+(a.status?"error ("+a.status+").":a.error+"."),quotas:{}}}' +
@@ -917,7 +860,6 @@ function injectedCode(grokFn) {
     'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
     'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
-    'async function qtpAlibaba(a){let b=await qtpFetchAlibabaTokenPlan((u,i)=>(0,d.proxyAwareFetch)(u,i,a.proxyOptions),qtpAlibabaCache,process.env,Date.now());return b&&"unavailable"===b.status?{message:"Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",quotas:{},status:"unavailable",source:"alibaba-console",reason:b.reason}:b}' +
     `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a)};`
   );
 }
@@ -1072,8 +1014,23 @@ function markerFor(relative, content = "") {
   return PROVIDERS_MARKER;
 }
 
+function buildLegacyUsagePatched(original) {
+  const grokMatch = original.match(
+    /"grok-cli":([A-Za-z_$][\w$]*)=>([A-Za-z_$][\w$]*)\(\1\.accessToken,\1\.providerSpecificData,\1\.proxyOptions\)/,
+  );
+  const grokFn = grokMatch ? grokMatch[2] : "f";
+  const newPatched = buildUsagePatched(original);
+  const oldFns =
+    `/* QuotaTrackerPatch:v2 */let qtpAlibabaCache=new Map();function qtpNum(value, fallback = NaN) {\n  const number = Number(value);\n  return Number.isFinite(number) ? number : fallback;\n}function qtpReset(value) {\n  if (!value || typeof value === "boolean" || Array.isArray(value)) return null;\n  if (typeof value === "number") return Math.max(0, value);\n  const date = new Date(value).getTime();\n  return Number.isFinite(date) ? date : null;\n}function qtpQuota(used, total, resetAt) {\n  const safeUsed = qtpNum(used);\n  const safeTotal = qtpNum(total);\n  if (!Number.isFinite(safeUsed) || !Number.isFinite(safeTotal) || safeTotal <= 0) return null;\n  const remaining = Math.max(0, safeTotal - safeUsed);\n  const remainingPercentage = Math.min(100, Math.max(0, Math.round((remaining / safeTotal) * 100)));\n  return {\n    used: safeUsed,\n    total: safeTotal,\n    remainingPercentage,\n    resetAt: qtpReset(resetAt),\n  };\n}function qtpBalance(available, total, currency = "USD") {\n  const safeAvailable = qtpNum(available);\n  const safeTotal = qtpNum(total);\n  if (!Number.isFinite(safeAvailable)) return null;\n  const used = Number.isFinite(safeTotal) && safeTotal >= safeAvailable ? safeTotal - safeAvailable : 0;\n  return {\n    name: \`Balance (\${currency})\`,\n    used,\n    total: Number.isFinite(safeTotal) && safeTotal > 0 ? safeTotal : 0,\n    remainingPercentage: Number.isFinite(safeTotal) && safeTotal > 0 ? Math.min(100, Math.max(0, Math.round((safeAvailable / safeTotal) * 100))) : 0,\n    resetAt: null,\n  };\n}function qtpParseOpenRouter(body) {\n  const data = body?.data;\n  if (!data) return null;\n  const total = qtpNum(data.total_credits);\n  const usage = qtpNum(data.total_usage);\n  if (Number.isFinite(total) && Number.isFinite(usage)) {\n    return { plan: "OpenRouter", quotas: { Balance: qtpBalance(total - usage, total) } };\n  }\n  const limit = qtpNum(data.limit);\n  if (Number.isFinite(limit) && Number.isFinite(usage)) {\n    return { plan: "OpenRouter", quotas: { Balance: qtpBalance(limit - usage, limit) } };\n  }\n  return null;\n}function qtpParseDeepSeek(body) {\n  if (!body?.is_available) return null;\n  const info = body.balance_infos?.[0];\n  if (!info) return null;\n  const total = qtpNum(info.total_balance);\n  const granted = qtpNum(info.granted_balance);\n  const toppedUp = qtpNum(info.topped_up_balance);\n  if (Number.isFinite(total)) return { plan: "DeepSeek", quotas: { Balance: qtpBalance(total, total) } };\n  if (Number.isFinite(granted) && Number.isFinite(toppedUp)) {\n    const sum = granted + toppedUp;\n    return { plan: "DeepSeek", quotas: { Balance: qtpBalance(sum, sum) } };\n  }\n  return null;\n}function qtpParseCommandCode(creditsBody, subsBody) {\n  const cData = creditsBody?.data;\n  const sData = subsBody?.data;\n  const currentC = qtpNum(cData?.current_credits);\n  const totalC = qtpNum(cData?.total_credits);\n  if (Number.isFinite(currentC) && Number.isFinite(totalC) && totalC > 0) {\n    return { plan: "CommandCode", quotas: { Credits: qtpQuota(totalC - currentC, totalC) } };\n  }\n  const tier = sData?.subscription_tier;\n  const subC = qtpNum(sData?.credits_included);\n  if (tier && Number.isFinite(subC) && subC > 0 && Number.isFinite(currentC)) {\n    return { plan: \`CommandCode (\${tier})\`,\nquotas: { Credits: qtpQuota(subC - currentC, subC) } };\n  }\n  return null;\n}function qtpNormalizeXai(raw) {\n  if (!raw || typeof raw !== "object" || !raw.quotas) return raw;\n  const copy = { ...raw, quotas: { ...raw.quotas } };\n  for (const [key, item] of Object.values(copy.quotas)) {\n    if (item && item.total === 0 && item.used === 0 && Number.isFinite(item.remainingPercentage)) {\n      copy.quotas[key] = { ...item, total: 100, used: Math.max(0, Math.min(100, 100 - item.remainingPercentage)) };\n    }\n  }\n  return copy;\n}function qtpParseMimo(body) {\n  const data = body?.data;\n  if (!data) return null;\n  const total = qtpNum(data.totalBalance);\n  if (Number.isFinite(total)) return { plan: "Xiaomi MiMo", quotas: { Balance: qtpBalance(total, total) } };\n  return null;\n}function qtpParseCline(userBody, planBody, usageItems) {\n  const plan = planBody?.data?.planName || planBody?.planName || "ClinePass";\n  const total = qtpNum(planBody?.data?.allowance || planBody?.allowance);\n  if (!Array.isArray(usageItems) || !Number.isFinite(total) || total <= 0) return null;\n  const now = Date.now();\n  const h5 = now - 5 * 3600 * 1000;\n  const d7 = now - 7 * 86400 * 1000;\n  const d30 = now - 30 * 86400 * 1000;\n  let u5 = 0, u7 = 0, u30 = 0;\n  for (const item of usageItems) {\n    const t = new Date(item.createdAt || item.timestamp || 0).getTime();\n    const cost = qtpNum(item.cost || item.credits || item.tokens || 1);\n    if (t >= h5) u5 += cost;\n    if (t >= d7) u7 += cost;\n    if (t >= d30) u30 += cost;\n  }\n  return {\n    plan,\n    quotas: {\n      "5 hour window": qtpQuota(u5, total),\n      "7 day window": qtpQuota(u7, total),\n      "30 day window": qtpQuota(u30, total),\n    },\n  };\n}function qtpAlibabaPercent(raw) {\n  if (raw === null || raw === undefined) return null;\n  if (typeof raw === "boolean") return null;\n  if (typeof raw === "number") {\n    return Number.isFinite(raw) ? raw : null;\n  }\n  if (typeof raw === "string") {\n    const trimmed = raw.trim().replace(/%/g, "");\n    const num = Number(trimmed);\n    return Number.isFinite(num) ? num : null;\n  }\n  return null;\n}function qtpFindAlibabaUsage(data, now = Date.now()) {\n  if (!data || typeof data !== "object") return null;\n  const stack = [data];\n  let best = null;\n  let bestTime = -1;\n  while (stack.length > 0) {\n    const current = stack.pop();\n    if (!current || typeof current !== "object") continue;\n    if (Array.isArray(current)) {\n      for (const item of current) stack.push(item);\n      continue;\n    }\n    const hasFive = "fiveHour" in current || "5hour" in current || "five_hour" in current;\n    const hasSeven = "sevenDay" in current || "7day" in current || "seven_day" in current;\n    if (hasFive || hasSeven) {\n      const fiveVal = current.fiveHour ?? current["5hour"] ?? current.five_hour;\n      const sevenVal = current.sevenDay ?? current["7day"] ?? current.seven_day;\n      const fivePct = qtpAlibabaPercent(fiveVal);\n      const sevenPct = qtpAlibabaPercent(sevenVal);\n      if (fivePct !== null || sevenPct !== null) {\n        const timeCandidate = qtpReset(current.updateTime || current.gmtModified || current.time || now);\n        if (timeCandidate > bestTime) {\n          bestTime = timeCandidate;\n          best = { fiveHour: fiveVal, sevenDay: sevenVal };\n        }\n      }\n    }\n    for (const key of Object.keys(current)) {\n      const child = current[key];\n      if (child && typeof child === "object") stack.push(child);\n    }\n  }\n  return best;\n}function qtpAlibabaWindow(windowData, now = Date.now()) {\n  if (windowData === null || windowData === undefined) return null;\n  if (typeof windowData === "boolean") return null;\n  let used = null;\n  let resetAt = null;\n  if (typeof windowData === "number" || typeof windowData === "string") {\n    used = qtpAlibabaPercent(windowData);\n  } else if (typeof windowData === "object") {\n    used = qtpAlibabaPercent(\n      windowData.usedPercentage ?? windowData.used_percentage ?? windowData.used ?? windowData.percentage,\n    );\n    resetAt = qtpReset(windowData.resetAt ?? windowData.reset_at ?? windowData.resetTime ?? windowData.nextResetTime);\n  }\n  if (used === null) return null;\n  return qtpQuota(used, 100, resetAt);\n}function qtpParseAlibabaTokenPlan(body, now = Date.now()) {\n  const source = body && typeof body === "object" ? body : null;\n  const usage = qtpFindAlibabaUsage(source, now);\n  if (!usage) return null;\n  const fiveHour = qtpAlibabaWindow(usage.fiveHour, now);\n  const sevenDay = qtpAlibabaWindow(usage.sevenDay, now);\n  if (!fiveHour || !sevenDay) return null;\n  return {\n    plan: "Alibaba Token Plan",\n    quotas: {\n      "5 hour window (%)": fiveHour,\n      "7 day window (%)": sevenDay,\n    },\n  };\n}function qtpSafeAlibabaReason(error) {\n  const msg = String(error?.message || error || "");\n  if (msg.includes("session unavailable")) return "session unavailable";\n  if (msg.includes("authentication failed") || msg.includes("401") || msg.includes("403")) {\n    return "authentication failed";\n  }\n  return "quota unavailable";\n}async function qtpFetchAlibabaPayload(fetcher, cookie, secToken) {\n  const url = "https://cs-data.qwencloud.com/data/api.json?action=IntlBroadScopeAspnGateway&product=sfm_bailian&api=zeldaHttp.apikeyMgr.%2Ftokenplan%2Fpersonal%2Fapi%2Fv2%2Fusage&_v=undefined";\n  const feTraceId = typeof crypto !== "undefined" && typeof crypto.randomBytes === "function" ? crypto.randomBytes(16).toString("hex") : Date.now().toString(36) + Math.random().toString(36).substring(2);\n  const body = new URLSearchParams({ product: "sfm_bailian", action: "IntlBroadScopeAspnGateway", sec_token: secToken, region: "ap-southeast-1", language: "en-US", params: JSON.stringify({ Api: "zeldaHttp.apikeyMgr./tokenplan/personal/api/v2/usage", V: "1.0", Data: { cornerstoneParam: { feTraceId, feURL: "https://home.qwencloud.com/billing/subscription/token-plan-individual", protocol: "V2", console: "ONE_CONSOLE", productCode: "p_efm", domain: "home.qwencloud.com", consoleSite: "QWENCLOUD", userNickName: "", userPrincipalName: "", xsp_lang: "en-US" } } }) }).toString();\n  let res;\n  try {\n    res = await fetcher(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Cookie: cookie, Referer: "https://home.qwencloud.com/billing/subscription/token-plan-individual", Origin: "https://home.qwencloud.com", "X-Requested-With": "XMLHttpRequest", Accept: "application/json, text/plain, */*" }, body, signal: AbortSignal.timeout(8000) });\n  } catch (err) {\n    throw new Error("quota unavailable");\n  }\n  if (res.status === 401 || res.status === 403) throw new Error("authentication failed");\n  if (!res.ok) throw new Error("quota unavailable");\n  try { return await res.json(); } catch (err) { throw new Error("quota unavailable"); }\n}async function qtpFetchAlibabaTokenPlan(fetcher, cache, env, now = Date.now()) {\n  const cookie = String(env?.ALIBABA_TOKEN_PLAN_QUOTA_COOKIE || "").trim();\n  const secToken = String(env?.ALIBABA_TOKEN_PLAN_SEC_TOKEN || "").trim();\n  if (!cookie || !secToken) return { status: "unavailable", source: "alibaba-console", reason: "session unavailable" };\n  const cached = cache.get("qwen-cloud-token-plan");\n  if (cached && now - cached.fetchedAt < 60000) return { ...cached.value, status: "ok" };\n  try {\n    const payload = await qtpFetchAlibabaPayload(fetcher, cookie, secToken);\n    const parsed = qtpParseAlibabaTokenPlan(payload, now);\n    if (!parsed) throw new Error("quota unavailable");\n    const value = { ...parsed, status: "ok", source: "alibaba-console", fetchedAt: new Date(now).toISOString() };\n    cache.set("qwen-cloud-token-plan", { value, fetchedAt: now });\n    return value;\n  } catch (error) {\n    if (cached && now - cached.fetchedAt <= 300000) return { ...cached.value, status: "stale" };\n    return { status: "unavailable", source: "alibaba-console", reason: qtpSafeAlibabaReason(error) };\n  }\n}async function qtpAlibaba(a){let b=await qtpFetchAlibabaTokenPlan((u,i)=>(0,d.proxyAwareFetch)(u,i,a.proxyOptions),qtpAlibabaCache,process.env,Date.now());return b&&"unavailable"===b.status?{message:"Console Alibaba: quota oficial indisponível — sessão ausente ou expirada.",quotas:{},status:"unavailable",source:"alibaba-console",reason:b.reason}:b}let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a)};`;
+  const newIdx = newPatched.indexOf("/* QuotaTrackerPatch:v2 */");
+  const newEndIdx =
+    newPatched.indexOf("let qtpProviders=") +
+    newPatched.slice(newPatched.indexOf("let qtpProviders=")).indexOf("};") +
+    2;
+  return newPatched.slice(0, newIdx) + oldFns + newPatched.slice(newEndIdx);
+}
 function buildLegacyPatched(relative, original) {
-  if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
+  if (relative === USAGE_RELATIVE) return buildLegacyUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildLegacyUiPatched(original);
   return buildProvidersPatched(original);
 }
@@ -1111,6 +1068,7 @@ function apply() {
     content.includes(markerFor(relative, content)),
   ).length;
   if (patchedCount === entries.length) {
+    let needsUpdate = false;
     for (const entry of entries) {
       const saved = originalPath(entry.relative);
       if (!fs.existsSync(saved)) {
@@ -1121,16 +1079,18 @@ function apply() {
         throw new Error(`Saved original hash mismatch: ${entry.relative}`);
       }
       if (entry.content !== buildPatched(entry.relative, original)) {
-        throw new Error(`Patched bundle changed unexpectedly: ${entry.relative}`);
+        needsUpdate = true;
       }
     }
-    return false;
+    if (!needsUpdate) return false;
   }
   const hasLegacyOrPartial = entries.some(
     ({ content }) =>
       LEGACY_MARKERS.some((m) => content.includes(m)) ||
       content.includes(PROVIDER_CATALOG_MARKER) ||
-      content.includes(UI_STATUS_MARKER),
+      content.includes(UI_STATUS_MARKER) ||
+      content.includes(MAIN_MARKER) ||
+      content.includes(PROVIDERS_MARKER),
   );
 
   if (hasLegacyOrPartial) {
@@ -1142,7 +1102,9 @@ function apply() {
       const hasRecognizedMarker =
         LEGACY_MARKERS.some((m) => entry.content.includes(m)) ||
         entry.content.includes(PROVIDER_CATALOG_MARKER) ||
-        entry.content.includes(UI_STATUS_MARKER);
+        entry.content.includes(UI_STATUS_MARKER) ||
+        entry.content.includes(MAIN_MARKER) ||
+        entry.content.includes(PROVIDERS_MARKER);
       if (!hasRecognizedMarker) {
         throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
       }
@@ -1157,7 +1119,8 @@ function apply() {
       }
       const expectedNew = buildPatched(entry.relative, original);
       const expectedLegacy = buildLegacyPatched(entry.relative, original);
-      if (entry.content !== expectedNew && entry.content !== expectedLegacy) {
+      const isRecognizedUsage = entry.relative === USAGE_RELATIVE && entry.content.includes(MAIN_MARKER);
+      if (entry.content !== expectedNew && entry.content !== expectedLegacy && !isRecognizedUsage) {
         throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
       }
       restore.push({ file: entry.file, original });
@@ -1194,37 +1157,42 @@ function rollback() {
     if (hash(original) !== expectedHash) {
       throw new Error(`Saved original hash mismatch for rollback: ${relative}`);
     }
+    const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    const isClean = hash(current) === expectedHash;
+    const hasMarker =
+      !isClean &&
+      (LEGACY_MARKERS.some((m) => current.includes(m)) ||
+        current.includes(PROVIDER_CATALOG_MARKER) ||
+        current.includes(UI_STATUS_MARKER) ||
+        current.includes(MAIN_MARKER) ||
+        current.includes(PROVIDERS_MARKER));
     const expectedNew = buildPatched(relative, original);
     const expectedLegacy = buildLegacyPatched(relative, original);
-    const current = fs.readFileSync(file, "utf8");
-    const hasMarker =
-      LEGACY_MARKERS.some((m) => current.includes(m)) ||
-      current.includes(PROVIDER_CATALOG_MARKER) ||
-      current.includes(UI_STATUS_MARKER);
-    return {
-      relative,
-      file,
-      original,
-      expectedNew,
-      expectedLegacy,
-      current,
-      hasMarker,
-    };
+    return { relative, file, original, expectedNew, expectedLegacy, current, isClean, hasMarker };
   });
+
   const patchedCount = entries.filter(({ hasMarker }) => hasMarker).length;
   if (patchedCount === 0) return false;
   if (patchedCount !== entries.length) {
     throw new Error("Partial quota patch detected; refusing unsafe rollback");
   }
+
   for (const entry of entries) {
-    if (entry.current !== entry.expectedNew && entry.current !== entry.expectedLegacy) {
-      throw new Error(`Patched bundle changed unexpectedly: ${entry.relative}`);
+    if (entry.hasMarker) {
+      const isRecognizedUsage = entry.relative === USAGE_RELATIVE && entry.current.includes(MAIN_MARKER);
+      if (entry.current !== entry.expectedNew && entry.current !== entry.expectedLegacy && !isRecognizedUsage) {
+        throw new Error(`Patched bundle changed unexpectedly: ${entry.relative}`);
+      }
     }
   }
-  for (const entry of entries) atomicWrite(entry.file, entry.original);
+
+  for (const entry of entries) {
+    if (entry.hasMarker) {
+      atomicWrite(entry.file, entry.original);
+    }
+  }
   return true;
 }
-
 function sanitize() {
   let restored = 0;
   for (const relative of Object.keys(CATALOG_HASHES)) {
@@ -1234,7 +1202,9 @@ function sanitize() {
     const hasMarker =
       LEGACY_MARKERS.some((m) => current.includes(m)) ||
       current.includes(PROVIDER_CATALOG_MARKER) ||
-      current.includes(UI_STATUS_MARKER);
+      current.includes(UI_STATUS_MARKER) ||
+      current.includes(MAIN_MARKER) ||
+      current.includes(PROVIDERS_MARKER);
     if (!hasMarker) continue;
     const saved = originalPath(relative);
     if (!fs.existsSync(saved)) {
@@ -1296,14 +1266,8 @@ module.exports = {
   qtpParseOpenRouter,
   qtpNormalizeXai,
   qtpQuota,
-  qtpAlibabaPercent,
-  qtpFindAlibabaUsage,
-  qtpAlibabaWindow,
-  qtpParseAlibabaTokenPlan,
-  qtpSafeAlibabaReason,
-  qtpFetchAlibabaPayload,
-  qtpFetchAlibabaTokenPlan,
-  qtpAlibabaCache,
+  qtpLocalQuota,
+  qtpCalcSlidingWindowUsage,
   qtpAlibaba,
   buildProviderCatalogPatched,
   buildProvidersPatched,

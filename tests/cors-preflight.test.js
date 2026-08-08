@@ -88,6 +88,13 @@ delete require.cache[require.resolve(path.join(appDir, "custom-server.js"))];
 require(path.join(appDir, "custom-server.js"));
 
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith("/_next/static/")) {
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("ETag", '"test-etag-123"');
+    res.writeHead(200, { "Content-Type": "application/javascript" });
+    res.end("// static asset");
+    return;
+  }
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ ok: true, ip: req.headers["x-9r-real-ip"] }));
 });
@@ -124,6 +131,38 @@ function request(options) {
   assert.strictEqual(parsed.ok, true);
   assert.strictEqual(parsed.ip, "127.0.0.1", "x-9r-real-ip logic must survive the patch");
 
+  console.log("[test] GET static chunk modified by overlay forces revalidation (must-revalidate)");
+  const modifiedStatic = await request({
+    host: "127.0.0.1",
+    port,
+    method: "GET",
+    path: "/_next/static/chunks/1321-54939b699b5f3d07.js",
+  });
+  assert.strictEqual(modifiedStatic.statusCode, 200);
+  assert.strictEqual(
+    modifiedStatic.headers["cache-control"],
+    "public, max-age=0, must-revalidate",
+    "Overlay-modified static chunk must be served with must-revalidate"
+  );
+  assert.strictEqual(
+    modifiedStatic.headers["etag"],
+    '"test-etag-123"',
+    "ETag header must be preserved for cheap revalidation"
+  );
+
+  console.log("[test] GET static chunk NOT modified by overlay keeps immutable cache");
+  const unmodifiedStatic = await request({
+    host: "127.0.0.1",
+    port,
+    method: "GET",
+    path: "/_next/static/chunks/app/layout-12345.js",
+  });
+  assert.strictEqual(unmodifiedStatic.statusCode, 200);
+  assert.strictEqual(
+    unmodifiedStatic.headers["cache-control"],
+    "public, max-age=31536000, immutable",
+    "Unmodified static chunk must retain max-age=31536000, immutable"
+  );
   server.close();
 
   console.log("[test] rollback restores byte-identical original");

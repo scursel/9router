@@ -121,9 +121,10 @@ for (const variant of VARIANTS_TO_TEST) {
   assert.ok(patched615.includes('"format":"openai"'), "must specify openai format in 615.js");
   assert.ok(patched615.includes('"scheme":"bearer"'), "must specify bearer scheme in 615.js");
   assert.ok(patched615.includes('"header":"Authorization"'), "must specify Authorization header in 615.js");
+  assert.ok(patched615.includes("validateUrl"), "must specify validateUrl in 615.js");
+  assert.ok(patched615.includes("apiKeyUrl"), "must specify apiKeyUrl in notice in 615.js");
   assert.ok(patched615.includes('"usage":true'), "must enable usage feature in 615.js");
   assert.ok(patched615.includes('"usageApikey":true'), "must enable usageApikey feature in 615.js");
-
   // Idempotence & reapplication byte identity
   const reapplied615 = buildProviderCatalogPatched(patched615);
   assert.equal(
@@ -182,9 +183,10 @@ for (const variant of VARIANTS_TO_TEST) {
       assert.ok(patched1321.includes('"format":"openai"'), "must specify openai format in client chunk");
       assert.ok(patched1321.includes('"scheme":"bearer"'), "must specify bearer scheme in client chunk");
       assert.ok(patched1321.includes('"header":"Authorization"'), "must specify Authorization header in client chunk");
+      assert.ok(patched1321.includes("validateUrl"), "must specify validateUrl in client chunk");
+      assert.ok(patched1321.includes("apiKeyUrl"), "must specify apiKeyUrl in notice in client chunk");
       assert.ok(patched1321.includes('"usage":true'), "must enable usage in client chunk");
       assert.ok(patched1321.includes('"usageApikey":true'), "must enable usageApikey in client chunk");
-
       // Idempotence & reapplication byte identity
       const reapplied1321 = buildProviderCatalogPatched(patched1321);
       assert.equal(

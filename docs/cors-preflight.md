@@ -35,7 +35,15 @@ that same wrapper, ahead of Next.js and the auth middleware:
    on every response, including `401`/`403` from the auth middleware. Without
    this, an auth failure on the real request would still look like a network
    error to the browser instead of a readable HTTP error.
-
+3. **Static chunk cache revalidation** — Next.js serves static chunks with
+   `Cache-Control: public, max-age=31536000, immutable`. When `quota-tracker.patch.js`
+   modifies static chunks in-place without changing their content-hashed filenames
+   (e.g., `/_next/static/chunks/1321-54939b699b5f3d07.js`), browsers that cached the
+   pre-patch chunk will never revalidate. `custom-server.js` dynamically reads the
+   set of modified static paths from `quota-tracker.patch.js` during `--apply` and
+   forces responses for those paths to use `Cache-Control: public, max-age=0, must-revalidate`
+   while preserving `ETag` and `Last-Modified` for cheap 304 revalidation. Unmodified
+   static chunks keep their standard `immutable` header.
 The IP-derivation logic in `custom-server.js` is untouched and still runs
 for every non-OPTIONS request.
 

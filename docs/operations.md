@@ -51,6 +51,17 @@ The user service launcher at
 Startup state is recorded in `~/.9router/quota-tracker-startup.status`. The
 quarantine is automatically cleared when a different 9Router version appears.
 Version-change backups are stored below `~/.9router/db/backups/pre-update-*`.
+## Cache-Safe Deployment
+
+Static Next.js chunks patched in-place by `quota-tracker.patch.js` maintain their original
+content-hashed filenames (for example `/_next/static/chunks/1321-54939b699b5f3d07.js`). Upstream
+Next.js serves `/_next/static/` with `Cache-Control: public, max-age=31536000, immutable`, which
+causes existing browser sessions to cache old bundle chunks indefinitely across service updates.
+
+The `cors-preflight.patch.js` server wrapper reads the target static paths from `quota-tracker.patch.js`
+at apply time and overrides `Cache-Control` to `public, max-age=0, must-revalidate` for overlay-modified
+chunks. This ensures normal page reloads revalidate updated chunks via HTTP 304/200 while preserving
+`immutable` caching for unmodified static assets.
 
 Original bundles used for rollback are stored under
 `~/.9router/quota-tracker-originals/<variant>/` (for example
@@ -75,23 +86,12 @@ to the xAI Management API by this patch. When the billing response provides
 shows a 100-point percentage bar with the provider's period end as its reset
 time. It does not estimate or invent a credit total.
 
-## Alibaba Token Plan
+## Alibaba Token Plan (qwen-cloud-token-plan)
 
-Configure local session credentials in `~/.9router/token-plan.env`:
+O coletor do Alibaba Token Plan utiliza um **medidor local de janela deslizante (5h / 7d)** calculado a partir do histórico de uso (`usageHistory`) do próprio 9Router.
 
-```bash
-install -d -m 700 ~/.9router
-umask 077
-cat > ~/.9router/token-plan.env <<'EOF'
-ALIBABA_TOKEN_PLAN_QUOTA_COOKIE=
-ALIBABA_TOKEN_PLAN_SEC_TOKEN=
-EOF
-chmod 600 ~/.9router/token-plan.env
-systemctl --user daemon-reload
-systemctl --user restart 9router.service
-```
-
-Values must be copied locally from the authenticated Alibaba console and never
-sent in chat. The dashboard reports `unavailable` when either value is empty or
-expired. The quota source is an internal console endpoint, not a public balance
-API.
+- **Como funciona**: A cada consulta, o 9Router soma os tokens de entrada e saída (prompt + completion) registrados para o provider `qwen-cloud-token-plan` e/ou conexão nas janelas de **5 horas** e **7 dias** ancoradas em `Date.now()`.
+- **Origem dos dados (`source`)**: Identificado no dashboard como `router-local`.
+- **O que NÃO é**: **Não** reflete os "Credits" ou quotas oficiais do console da Alibaba Cloud (para os quais não existe API pública/oficial de consulta). Trata-se exclusivamente do consumo medido localmente pelo roteador.
+- **Sem credenciais de console**: Não exige cookies, `sec_token` ou variáveis de ambiente externas (`ALIBABA_TOKEN_PLAN_*`). Funciona 100% de forma local e durável.
+- **Limites opcionais**: Por padrão, o consumo é exibido de forma absoluta (ex.: `1.500 / ∞`). Se desejar exibir percentuais e saldo restante, configure os limites em tokens `limit5h` e `limit7d` (ou `quotaLimit5h`, `quotaLimit7d`) no campo `providerSpecificData` da conexão.
