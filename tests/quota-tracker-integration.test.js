@@ -434,6 +434,8 @@ assert.throws(
 const patchSource = fs.readFileSync(path.join(__dirname, "../patches/quota-tracker.patch.js"), "utf8");
 
 const providerCatalogMarker = "/* QuotaTrackerAlibabaProvider:v1 */";
+const openCodeCatalogMarker = "/* OpenCodeGoCatalog:v1 */";
+const openCodeRuntimeMarker = "/* OpenCodeGoRuntime:v1 */";
 const usageMarker = "/* QuotaTrackerPatch:v2 */";
 const providersMarker = "/* QuotaTrackerProviders:v2 */";
 const uiMarker = "/* QuotaTrackerCurrency:v2 */";
@@ -519,6 +521,28 @@ assert.ok(
 assert.ok(
   scratchProviderClientRoute.includes("qwen-cloud-token-plan"),
   "provider client route must contain qwen-cloud-token-plan",
+);
+const scratchOpenCodeCatalog = fs.readFileSync(
+  path.join(serverRoot, "chunks/4963.js"),
+  "utf8",
+);
+assert.ok(
+  scratchOpenCodeCatalog.includes(openCodeCatalogMarker),
+  "OpenCode Go catalog chunk must contain OPEN_CODE_CATALOG_MARKER",
+);
+for (const modelId of ["kimi-k3", "qwen3.8-max", "qwen3.5-plus", "gpt-5.6-luna", "grok-4.5"]) {
+  assert.ok(
+    scratchOpenCodeCatalog.includes(`id:\"${modelId}\"`),
+    `OpenCode Go catalog chunk must contain ${modelId}`,
+  );
+}
+const scratchOpenCodeRuntime = fs.readFileSync(
+  path.join(serverRoot, "chunks/318.js"),
+  "utf8",
+);
+assert.ok(
+  scratchOpenCodeRuntime.includes(openCodeRuntimeMarker),
+  "OpenCode Go runtime chunk must contain OPEN_CODE_RUNTIME_MARKER",
 );
 const scratchQuotaPage = fs.readFileSync(
   path.join(serverRoot, "app/(dashboard)/dashboard/quota/page.js"),
@@ -644,6 +668,8 @@ const allRelatives = [
   "chunks/5619.js",
   "chunks/615.js",
   "chunks/4695.js",
+  "chunks/4963.js",
+  "chunks/318.js",
   "chunks/7211.js",
   "chunks/827.js",
   "chunks/869.js",

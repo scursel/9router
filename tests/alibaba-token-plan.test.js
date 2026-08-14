@@ -189,6 +189,53 @@ async function runAsyncTests() {
     }
   }
 
+  // 6. Usage chunk loads getDb via webpack 89718/71998, not 36366 (other chunk).
+  {
+    const now = Date.parse("2026-08-07T12:00:00.000Z");
+    const source = qtpAlibaba.toString();
+    assert.match(
+      source,
+      /89718/,
+      "qtpAlibaba must require webpack module 89718 (getDb already in the usage chunk)",
+    );
+
+    const rows = [
+      {
+        promptTokens: 80,
+        completionTokens: 20,
+        timestamp: new Date(now - 3600 * 1000).toISOString(),
+      },
+    ];
+    const webpackRequire = (id) => {
+      if (id === 36366) throw new Error("36366 is not in the usage chunk");
+      if (id === 89718) {
+        return {
+          c: async () => ({
+            all() {
+              return rows;
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected webpack module ${id}`);
+    };
+    const isolated = new Function(
+      "c",
+      "qtpCalcSlidingWindowUsage",
+      `${qtpAlibaba.toString()}; return qtpAlibaba;`,
+    )(webpackRequire, qtpCalcSlidingWindowUsage);
+
+    const previousAdapter = global._dbAdapter;
+    global._dbAdapter = undefined;
+    try {
+      const res = await isolated({ connectionId: "conn-usage-chunk" }, now);
+      assert.equal(res.quotas["Consumo 5h (medido local)"].used, 100);
+      assert.equal(res.source, "router-local");
+    } finally {
+      global._dbAdapter = previousAdapter;
+    }
+  }
+
   console.log("Alibaba Token Plan local sliding-window quota meter tests: ok");
 }
 

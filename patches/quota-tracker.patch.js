@@ -231,7 +231,9 @@ const ENHANCED_0550_CATALOG_HASHES = {
   "chunks/4664.js": "7924627d1ec3d2f9f0fea16fa2bd4b88f471de415c4e9ae69cf732cbff00c5ee",
   "chunks/5619.js": "b1107aed705bc1704a5fb6c6ada646c51eafe47c56c1ca986ba997438b77ca3f",
   "chunks/615.js": "bfd8435754e8bcb52d6824191d0070ef89842aa4078161a09bab3860374fff7e",
+  "chunks/4963.js": "4549697c5cbcea52dd6de0a36d2ec0852836999b00318f8bfbf512c33ea49eb4",
   "chunks/4695.js": "384c4efe328c71934954b6b34aa6f1bb42a90340abbd56e47b17022a2a584baf",
+  "chunks/318.js": "4067688b0d9b8a8821fa11f8262c4761149428ac6c57bf81b7443e09c2068a80",
   "chunks/7211.js": "adf7d6d0ad78d284339c22d3aa43f54055373525e2c4782cee291acf2bdc2d59",
   "chunks/827.js": "0608c99028f03a66f8b135670936a57f6eeb8cc3125e684e32e2ff6f413658c8",
   "chunks/869.js": "53b6231711cd75add1216e016399c80b150b79846530a38fabbe622921af3f1b",
@@ -294,10 +296,32 @@ const PROVIDERS_MARKER = "/* QuotaTrackerProviders:v2 */";
 const UI_MARKER = "/* QuotaTrackerCurrency:v2 */";
 const PROVIDER_CATALOG_MARKER = "/* QuotaTrackerAlibabaProvider:v1 */";
 const UI_STATUS_MARKER = "/* QuotaTrackerAlibabaStatus:v1 */";
+const OPENCODE_GO_CATALOG_MARKER = "/* OpenCodeGoCatalog:v1 */";
+const OPENCODE_GO_RUNTIME_MARKER = "/* OpenCodeGoRuntime:v1 */";
+const OPENCODE_GO_MODELS_OLD =
+  'models:[{id:"glm-5.2",name:"GLM 5.2"},{id:"glm-5.1",name:"GLM 5.1"},{id:"kimi-k2.7-code",name:"Kimi K2.7 Code"},{id:"kimi-k2.6",name:"Kimi K2.6"},{id:"deepseek-v4-pro",name:"DeepSeek V4 Pro"},{id:"deepseek-v4-flash",name:"DeepSeek V4 Flash"},{id:"mimo-v2.5",name:"MiMo V2.5"},{id:"mimo-v2.5-pro",name:"MiMo V2.5 Pro"},{id:"minimax-m3",name:"MiniMax M3",targetFormat:"claude"},{id:"minimax-m2.7",name:"MiniMax M2.7",targetFormat:"claude"},{id:"minimax-m2.5",name:"MiniMax M2.5",targetFormat:"claude"},{id:"qwen3.7-max",name:"Qwen 3.7 Max",targetFormat:"claude"},{id:"qwen3.7-plus",name:"Qwen 3.7 Plus",targetFormat:"claude"},{id:"qwen3.6-plus",name:"Qwen 3.6 Plus",targetFormat:"claude"}]';
+const OPENCODE_GO_MODELS_NEW =
+  'models:[{id:"minimax-m3",name:"MiniMax M3",targetFormat:"claude"},{id:"minimax-m2.7",name:"MiniMax M2.7",targetFormat:"claude"},{id:"minimax-m2.5",name:"MiniMax M2.5",targetFormat:"claude"},{id:"kimi-k3",name:"Kimi K3"},{id:"kimi-k2.7-code",name:"Kimi K2.7 Code"},{id:"kimi-k2.6",name:"Kimi K2.6"},{id:"kimi-k2.5",name:"Kimi K2.5"},{id:"glm-5.2",name:"GLM 5.2"},{id:"glm-5.1",name:"GLM 5.1"},{id:"glm-5",name:"GLM 5"},{id:"deepseek-v4-pro",name:"DeepSeek V4 Pro"},{id:"deepseek-v4-flash",name:"DeepSeek V4 Flash"},{id:"qwen3.7-max",name:"Qwen 3.7 Max",targetFormat:"claude"},{id:"qwen3.8-max",name:"Qwen 3.8 Max",targetFormat:"claude"},{id:"qwen3.7-plus",name:"Qwen 3.7 Plus",targetFormat:"claude"},{id:"qwen3.6-plus",name:"Qwen 3.6 Plus",targetFormat:"claude"},{id:"qwen3.5-plus",name:"Qwen 3.5 Plus",targetFormat:"claude"},{id:"mimo-v2-pro",name:"MiMo V2 Pro"},{id:"mimo-v2-omni",name:"MiMo V2 Omni"},{id:"mimo-v2.5-pro",name:"MiMo V2.5 Pro"},{id:"mimo-v2.5",name:"MiMo V2.5"},{id:"hy3",name:"HY3"},{id:"hy3-preview",name:"HY3 Preview"},{id:"gpt-5.6-luna",name:"GPT-5.6 Luna"},{id:"grok-4.5",name:"Grok 4.5"}]' + OPENCODE_GO_CATALOG_MARKER;
+const OPENCODE_GO_RUNTIME_OLD =
+  'let h=new Set(["minimax-m3","minimax-m2.7","minimax-m2.5","qwen3.7-max","qwen3.7-plus","qwen3.6-plus"])';
+const OPENCODE_GO_RUNTIME_NEW =
+  'let h=new Set(["minimax-m3","minimax-m2.7","minimax-m2.5","qwen3.7-max","qwen3.8-max","qwen3.7-plus","qwen3.6-plus","qwen3.5-plus"])' + OPENCODE_GO_RUNTIME_MARKER;
+const OPENCODE_GO_CATALOG_RELATIVES = new Set([
+  "chunks/4963.js",
+  "chunks/4695.js",
+  "chunks/5619.js",
+]);
+const OPENCODE_GO_RUNTIME_RELATIVES = new Set(["chunks/318.js"]);
+const OPENCODE_GO_DIRECT_RELATIVES = new Set([
+  "chunks/4963.js",
+  "chunks/318.js",
+]);
 const LEGACY_MARKERS = [
   "/* QuotaTrackerPatch:v2 */",
   "/* QuotaTrackerProviders:v2 */",
   "/* QuotaTrackerCurrency:v2 */",
+  OPENCODE_GO_CATALOG_MARKER,
+  OPENCODE_GO_RUNTIME_MARKER,
 ];
 
 const CANONICAL_PROVIDER = {
@@ -331,10 +355,30 @@ const CANONICAL_PROVIDER = {
   features: { usage: true, usageApikey: true },
 };
 
+function patchOpenCodeGoCatalog(content) {
+  if (content.includes(OPENCODE_GO_CATALOG_MARKER)) return content;
+  if (!content.includes('id:\"opencode-go\"')) return content;
+  const count = content.split(OPENCODE_GO_MODELS_OLD).length - 1;
+  if (count !== 1) {
+    throw new Error(`OpenCode Go catalog marker expected once, found ${count}`);
+  }
+  return content.replace(OPENCODE_GO_MODELS_OLD, OPENCODE_GO_MODELS_NEW);
+}
+
+function patchOpenCodeGoRuntime(content) {
+  if (content.includes(OPENCODE_GO_RUNTIME_MARKER)) return content;
+  if (!content.includes('super(\"opencode-go\"')) return content;
+  const count = content.split(OPENCODE_GO_RUNTIME_OLD).length - 1;
+  if (count !== 1) {
+    throw new Error(`OpenCode Go runtime marker expected once, found ${count}`);
+  }
+  return content.replace(OPENCODE_GO_RUNTIME_OLD, OPENCODE_GO_RUNTIME_NEW);
+}
+
 function buildProviderCatalogPatched(original) {
   if (original.includes(PROVIDER_CATALOG_MARKER)) return original;
 
-  let result = original;
+  let result = patchOpenCodeGoCatalog(patchOpenCodeGoRuntime(original));
 
   // Server bundles that embed module 40615.
   const catalogModuleIdx = result.indexOf("40615:(");
@@ -756,21 +800,20 @@ async function qtpAlibaba(arg, now = Date.now()) {
   let rows = [];
   try {
     let db = globalThis._dbAdapter?.instance || global._dbAdapter?.instance;
-    if (!db && typeof c === "function") {
-      try {
-        const dbMod = c(36366);
-        if (dbMod && typeof dbMod.c === "function") {
-          db = await dbMod.c();
-        }
-      } catch (_) {}
-    }
-    if (!db && typeof __webpack_require__ === "function") {
-      try {
-        const dbMod = __webpack_require__(36366);
-        if (dbMod && typeof dbMod.c === "function") {
-          db = await dbMod.c();
-        }
-      } catch (_) {}
+    const webpackRequire =
+      typeof c === "function" ? c : typeof __webpack_require__ === "function" ? __webpack_require__ : null;
+    // 89718/71998 are already in the usage chunk graph. 36366 lives in
+    // another chunk and is not loadable from the quota collector.
+    if (!db && webpackRequire) {
+      for (const moduleId of [89718, 71998, 36366]) {
+        try {
+          const dbMod = webpackRequire(moduleId);
+          if (dbMod && typeof dbMod.c === "function") {
+            db = await dbMod.c();
+            if (db) break;
+          }
+        } catch (_) {}
+      }
     }
     if (db && typeof db.all === "function") {
       if (connId) {
@@ -1003,6 +1046,8 @@ function isCatalogTarget(relative, original = "") {
   return (
     relative === "chunks/615.js" ||
     relative.includes("1321-") ||
+    OPENCODE_GO_CATALOG_RELATIVES.has(relative) ||
+    OPENCODE_GO_RUNTIME_RELATIVES.has(relative) ||
     original.includes("40615:(")
   );
 }
@@ -1032,6 +1077,12 @@ function buildLegacyUsagePatched(original) {
 function buildLegacyPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildLegacyUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildLegacyUiPatched(original);
+  if (OPENCODE_GO_DIRECT_RELATIVES.has(relative)) {
+    return buildProviderCatalogPatched(original);
+  }
+  if (OPENCODE_GO_CATALOG_RELATIVES.has(relative)) {
+    return buildProvidersPatched(buildProviderCatalogPatched(original));
+  }
   return buildProvidersPatched(original);
 }
 
@@ -1039,7 +1090,13 @@ function buildPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
   if (isCatalogTarget(relative, original)) {
-    return buildProvidersPatched(buildProviderCatalogPatched(original));
+    const catalog = buildProviderCatalogPatched(original);
+    if (
+      OPENCODE_GO_DIRECT_RELATIVES.has(relative)
+    ) {
+      return catalog;
+    }
+    return buildProvidersPatched(catalog);
   }
   return buildProvidersPatched(original);
 }
