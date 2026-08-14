@@ -25,8 +25,9 @@ const UI_RELATIVES = new Set([
   "../static/chunks/app/(dashboard)/dashboard/quota/page-f53ad0a50b4418ef.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-14020782e8f3bc6b.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-b571eafb19552ce1.js",
 ]);
-const SUPPORTED_VERSIONS = new Set(["0.5.35", "0.5.40", "0.5.45", "0.5.50"]);
+const SUPPORTED_VERSIONS = new Set(["0.5.35", "0.5.40", "0.5.45", "0.5.50", "0.5.55"]);
 const UPSTREAM_CATALOG_HASHES = {
   "app/api/models/route.js": "7e150ccf2352d9457a204e87c89065a8ad81c9a3bdae1647ef6dbfab1efd9fc7",
   "app/api/provider-nodes/route.js": "a6f1767762b0b03f3a43b38c04eb9ab11fa60bf62fe9a5ac0be3b7cf8a36e1a2",
@@ -239,8 +240,35 @@ const ENHANCED_0550_CATALOG_HASHES = {
   "chunks/869.js": "53b6231711cd75add1216e016399c80b150b79846530a38fabbe622921af3f1b",
   "chunks/8847.js": "f4388200a63b4b29177f79726a6f89b72a1aa33cde9c78cb12963e57ed80b723",
 };
+const OFFICIAL_0555_CATALOG_HASHES = {
+  "../static/chunks/1321-914afc18e65fc58b.js": "d627413fae30d918b98a6655b051c19c84b2c0d72c199ae116d056c85364ee4f",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-b571eafb19552ce1.js": "d5d9195a5033487878bc9ae3535ce4eefce52f0e618226a48d3f177ccc4b1a53",
+  "app/(dashboard)/dashboard/quota/page.js": "db516312659f4a46041d14acc1f9cdad73c8426887f97651b12ebb28ce915a1e",
+  "app/api/provider-nodes/route.js": "b03234c39768039c24c9902971a6bf4ceb7df87e8a6abd6310aefe9004743d80",
+  "app/api/providers/client/route.js": "e1e9ec3852efb9017de2cb357005c973b9a384b40797b516d8c6df8ff7a71937",
+  "app/api/providers/validate/route.js": "e9a00b3296df72d4400cf5e3bb20d4bb3d17d5682da94696b8f0f15f37ee879c",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "caff2ed83ac932014a4a60bcb41137f3733101733a3ac32bf639cc83455994e1",
+  "app/api/usage/[connectionId]/route.js": "4e4dbbb41dffa70252e7a47e97f54f16af7be8aa01874a35107e185e27cdcf25",
+  "app/api/usage/providers/route.js": "689d35461a9085c00224b371e05756c4cde5b598fd3464d132148d6ec7dc06eb",
+  "app/api/v1/audio/voices/route.js": "ea08713656655e9cd13ba252aa3416163e542eab3f8d8aeedb93b17e07150add",
+  "app/api/v1/models/info/route.js": "8f06060477eeaa1bc0bed101eb6f5080226a4b641cd30719e2ec3a6a1315e383",
+  "app/api/v1beta/models/route.js": "20d779274a1b1ebc049754f4de315d37719ae79b1b8cbc8b550e7a1df6937f42",
+  "chunks/4953.js": "68364a5b999f570106770685b5fc073257b784a40ada00717f74586732e9043f",
+  "chunks/5285.js": "d00899b0b3146c5a286b085623648be91d23272ff37219f318c2ecda9fc487b1",
+  "chunks/615.js": "d307c504fb65e4a2aa00ad88c50f837bdf3e3e6f2d8b4b0caafbca8c9fc9ed7a",
+  "chunks/7011.js": "016a374221ab72a31d89d067fbf3d6e2fc6baf932d16dc5361380d4090f4e827",
+  "chunks/7211.js": "7f03b5f0a249c4bc651560072c034a7da9d3372006aa0b77e1ef65bd6af02ca4",
+  "chunks/827.js": "86135077b3167ff07054fbf49504e2419545689f87d13a4220fe4663e3121e52",
+  "chunks/869.js": "052d4e6272bbc62e96214c47738d747ddedb6186193f183ada7405fca2a8289f",
+  "chunks/8847.js": "a38bd6643e01af85e4d2463207df86ef88170bc77b8b60d438fbba2a01f006df",
+};
 // Fingerprint files are unique per official/enhanced build of each release.
 const CATALOG_VARIANTS = [
+  {
+    name: "official-0.5.55",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-b571eafb19552ce1.js",
+    hashes: OFFICIAL_0555_CATALOG_HASHES,
+  },
   {
     name: "enhanced-0.5.50",
     fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js",
@@ -282,11 +310,12 @@ const CATALOG_VARIANTS = [
     hashes: OFFICIAL_0535_CATALOG_HASHES,
   },
 ];
-const SELECTED_CATALOG = CATALOG_VARIANTS.find((variant) =>
+const MATCHED_CATALOG = CATALOG_VARIANTS.find((variant) =>
   fs.existsSync(path.join(SERVER_ROOT, variant.fingerprint)),
-) || {
-  name: "official-0.5.50",
-  hashes: OFFICIAL_0550_CATALOG_HASHES,
+) || null;
+const SELECTED_CATALOG = MATCHED_CATALOG || {
+  name: "unknown",
+  hashes: {},
 };
 const CATALOG_VARIANT = SELECTED_CATALOG.name;
 const CATALOG_HASHES = SELECTED_CATALOG.hashes;
@@ -298,6 +327,12 @@ const PROVIDER_CATALOG_MARKER = "/* QuotaTrackerAlibabaProvider:v1 */";
 const UI_STATUS_MARKER = "/* QuotaTrackerAlibabaStatus:v1 */";
 const OPENCODE_GO_CATALOG_MARKER = "/* OpenCodeGoCatalog:v1 */";
 const OPENCODE_GO_RUNTIME_MARKER = "/* OpenCodeGoRuntime:v1 */";
+const OPENCODE_GO_USAGE_MARKER = "/* OpenCodeGoUsage:v1 */";
+const ALITP_USAGE_MARKER = "/* AlitpUsage:v1 */";
+const OFFICIAL_OPENCODE_GO_USAGE_TAIL =
+  '{id:"qwen3.6-plus",name:"Qwen 3.6 Plus",supportedFormats:["openai","claude"]}]';
+const OFFICIAL_ALITP_MODELS =
+  'models:[{id:"qwen3.8-max-preview",name:"Qwen3.8 Max Preview"},{id:"qwen3.7-max",name:"Qwen3.7 Max"},{id:"qwen3.7-plus",name:"Qwen3.7 Plus"},{id:"qwen3.6-flash",name:"Qwen3.6 Flash"},{id:"glm-5.2",name:"GLM 5.2"},{id:"deepseek-v4-pro",name:"DeepSeek V4 Pro"}]';
 const OPENCODE_GO_MODELS_OLD =
   'models:[{id:"glm-5.2",name:"GLM 5.2"},{id:"glm-5.1",name:"GLM 5.1"},{id:"kimi-k2.7-code",name:"Kimi K2.7 Code"},{id:"kimi-k2.6",name:"Kimi K2.6"},{id:"deepseek-v4-pro",name:"DeepSeek V4 Pro"},{id:"deepseek-v4-flash",name:"DeepSeek V4 Flash"},{id:"mimo-v2.5",name:"MiMo V2.5"},{id:"mimo-v2.5-pro",name:"MiMo V2.5 Pro"},{id:"minimax-m3",name:"MiniMax M3",targetFormat:"claude"},{id:"minimax-m2.7",name:"MiniMax M2.7",targetFormat:"claude"},{id:"minimax-m2.5",name:"MiniMax M2.5",targetFormat:"claude"},{id:"qwen3.7-max",name:"Qwen 3.7 Max",targetFormat:"claude"},{id:"qwen3.7-plus",name:"Qwen 3.7 Plus",targetFormat:"claude"},{id:"qwen3.6-plus",name:"Qwen 3.6 Plus",targetFormat:"claude"}]';
 const OPENCODE_GO_MODELS_NEW =
@@ -310,11 +345,15 @@ const OPENCODE_GO_CATALOG_RELATIVES = new Set([
   "chunks/4963.js",
   "chunks/4695.js",
   "chunks/5619.js",
+  "chunks/4953.js",
+  "chunks/5285.js",
+  "chunks/7011.js",
 ]);
 const OPENCODE_GO_RUNTIME_RELATIVES = new Set(["chunks/318.js"]);
 const OPENCODE_GO_DIRECT_RELATIVES = new Set([
   "chunks/4963.js",
   "chunks/318.js",
+  "chunks/4953.js",
 ]);
 const LEGACY_MARKERS = [
   "/* QuotaTrackerPatch:v2 */",
@@ -322,6 +361,8 @@ const LEGACY_MARKERS = [
   "/* QuotaTrackerCurrency:v2 */",
   OPENCODE_GO_CATALOG_MARKER,
   OPENCODE_GO_RUNTIME_MARKER,
+  OPENCODE_GO_USAGE_MARKER,
+  ALITP_USAGE_MARKER,
 ];
 
 const CANONICAL_PROVIDER = {
@@ -359,6 +400,7 @@ function patchOpenCodeGoCatalog(content) {
   if (content.includes(OPENCODE_GO_CATALOG_MARKER)) return content;
   if (!content.includes('id:\"opencode-go\"')) return content;
   const count = content.split(OPENCODE_GO_MODELS_OLD).length - 1;
+  if (count === 0) return content;
   if (count !== 1) {
     throw new Error(`OpenCode Go catalog marker expected once, found ${count}`);
   }
@@ -369,16 +411,61 @@ function patchOpenCodeGoRuntime(content) {
   if (content.includes(OPENCODE_GO_RUNTIME_MARKER)) return content;
   if (!content.includes('super(\"opencode-go\"')) return content;
   const count = content.split(OPENCODE_GO_RUNTIME_OLD).length - 1;
+  if (count === 0) return content;
   if (count !== 1) {
     throw new Error(`OpenCode Go runtime marker expected once, found ${count}`);
   }
   return content.replace(OPENCODE_GO_RUNTIME_OLD, OPENCODE_GO_RUNTIME_NEW);
 }
 
-function buildProviderCatalogPatched(original) {
-  if (original.includes(PROVIDER_CATALOG_MARKER)) return original;
+function patchOpenCodeGoUsageFeatures(content) {
+  if (content.includes(OPENCODE_GO_USAGE_MARKER)) return content;
+  if (!content.includes('id:\"opencode-go\"')) return content;
+  if (content.includes(OPENCODE_GO_CATALOG_MARKER)) {
+    const count = content.split(OPENCODE_GO_CATALOG_MARKER).length - 1;
+    if (count !== 1) {
+      throw new Error(`OpenCode Go catalog marker expected once for usage features, found ${count}`);
+    }
+    return content.replace(
+      OPENCODE_GO_CATALOG_MARKER,
+      OPENCODE_GO_CATALOG_MARKER + ",features:{usage:!0,usageApikey:!0}" + OPENCODE_GO_USAGE_MARKER,
+    );
+  }
+  const officialCount = content.split(OFFICIAL_OPENCODE_GO_USAGE_TAIL).length - 1;
+  if (officialCount === 0) return content;
+  if (officialCount !== 1) {
+    throw new Error(`Official OpenCode Go usage tail expected once, found ${officialCount}`);
+  }
+  return content.replace(
+    OFFICIAL_OPENCODE_GO_USAGE_TAIL,
+    OFFICIAL_OPENCODE_GO_USAGE_TAIL + ",features:{usage:!0,usageApikey:!0}" + OPENCODE_GO_USAGE_MARKER,
+  );
+}
+
+function patchAlitpUsageFeatures(content) {
+  if (content.includes(ALITP_USAGE_MARKER)) return content;
+  if (!content.includes('id:"alitp-intl"')) return content;
+  const count = content.split(OFFICIAL_ALITP_MODELS).length - 1;
+  if (count === 0) return content;
+  if (count !== 1) {
+    throw new Error(`Official alitp-intl models tail expected once, found ${count}`);
+  }
+  return content.replace(
+    OFFICIAL_ALITP_MODELS,
+    OFFICIAL_ALITP_MODELS + ",features:{usage:!0,usageApikey:!0}" + ALITP_USAGE_MARKER,
+  );
+}
+
+function buildProviderCatalogPatched(original, options = {}) {
+  const usageFeatures = options.usageFeatures !== false;
+  if (original.includes(PROVIDER_CATALOG_MARKER)) {
+    return usageFeatures ? patchAlitpUsageFeatures(patchOpenCodeGoUsageFeatures(original)) : original;
+  }
 
   let result = patchOpenCodeGoCatalog(patchOpenCodeGoRuntime(original));
+  if (usageFeatures) {
+    result = patchAlitpUsageFeatures(patchOpenCodeGoUsageFeatures(result));
+  }
 
   // Server bundles that embed module 40615.
   const catalogModuleIdx = result.indexOf("40615:(");
@@ -468,11 +555,45 @@ function buildProviderCatalogPatched(original) {
 const USAGE_ALLOW_MARKER =
   "x=d.A.filter(a=>a.features?.usage).map(a=>a.id)";
 const USAGE_ALLOW_PATCHED =
-  'x=[...new Set([...d.A.filter(a=>a.features?.usage).map(a=>a.id),"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"])]';
+  'x=[...new Set([...d.A.filter(a=>a.features?.usage).map(a=>a.id),"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan","opencode-go","alitp-intl"])]';
 const API_KEY_ALLOW_MARKER =
   "y=d.A.filter(a=>a.features?.usageApikey).map(a=>a.id)";
 const API_KEY_ALLOW_PATCHED =
-  'y=[...new Set([...d.A.filter(a=>a.features?.usageApikey).map(a=>a.id),"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"])]';
+  'y=[...new Set([...d.A.filter(a=>a.features?.usageApikey).map(a=>a.id),"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan","opencode-go","alitp-intl"])]';
+
+function qtpParseOpenCodeGo(body, now = Date.now()) {
+  const usage = body && typeof body === "object" ? body.usage : null;
+  if (!usage || typeof usage !== "object") return null;
+
+  const labels = {
+    rolling: "Rolling (5h)",
+    weekly: "Weekly",
+    monthly: "Monthly",
+  };
+  const quotas = {};
+  for (const name of ["rolling", "weekly", "monthly"]) {
+    const window = usage[name];
+    if (!window || typeof window !== "object") continue;
+    const percent = qtpNum(window.percent);
+    if (!Number.isFinite(percent)) continue;
+    const used = Math.max(0, Math.min(100, percent));
+    quotas[labels[name]] = {
+      used,
+      total: 100,
+      remainingPercentage: 100 - used,
+      resetAt: qtpReset(window.resetsAt),
+      unlimited: false,
+    };
+  }
+  if (Object.keys(quotas).length === 0) return null;
+  return {
+    plan: "OpenCode Go",
+    status: "ok",
+    source: "opencode-go",
+    fetchedAt: new Date(now).toISOString(),
+    quotas,
+  };
+}
 
 function qtpNum(value, fallback = NaN) {
   const number = Number(value);
@@ -818,12 +939,12 @@ async function qtpAlibaba(arg, now = Date.now()) {
     if (db && typeof db.all === "function") {
       if (connId) {
         rows = db.all(
-          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE (provider = 'qwen-cloud-token-plan' OR connectionId = ?) AND timestamp >= ?",
+          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE (provider IN ('qwen-cloud-token-plan', 'alitp-intl') OR connectionId = ?) AND timestamp >= ?",
           [connId, cutoff7dIso],
         );
       } else {
         rows = db.all(
-          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE provider = 'qwen-cloud-token-plan' AND timestamp >= ?",
+          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE provider IN ('qwen-cloud-token-plan', 'alitp-intl') AND timestamp >= ?",
           [cutoff7dIso],
         );
       }
@@ -852,6 +973,13 @@ function assertVersion() {
     );
   }
   return version;
+}
+
+function assertKnownCatalog() {
+  if (MATCHED_CATALOG) return;
+  throw new Error(
+    `Unsupported 9Router bundle fingerprint (version ${assertVersion()}); refusing to patch`,
+  );
 }
 
 function stripV1(content) {
@@ -883,6 +1011,7 @@ function runtimeFunctions() {
     qtpNormalizeXai,
     qtpParseMimo,
     qtpParseCline,
+    qtpParseOpenCodeGo,
     qtpLocalQuota,
     qtpCalcSlidingWindowUsage,
     qtpAlibaba,
@@ -903,7 +1032,8 @@ function injectedCode(grokFn) {
     'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
     'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
-    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a)};`
+    'let qtpOpenCodeGoCache=new Map();async function qtpOpenCodeGo(a,b){if(!a)return{message:"OpenCode Go API key not available.",quotas:{}};let n=Date.now(),k=qtpOpenCodeGoCache.get(a);if(k&&n-k.fetchedAt<45e3)return k.value;try{let g=await(0,d.proxyAwareFetch)("https://opencode.ai/zen/go/v1/usage",{method:"GET",headers:{Authorization:"Bearer "+a,Accept:"application/json","User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"}},b),h=await g.json().catch(()=>null);if(!g.ok)return qtpError({status:g.status},"OpenCode Go");let e=qtpParseOpenCodeGo(h);if(!e)return{message:"OpenCode Go connected. No usage windows were returned.",quotas:{}};return qtpOpenCodeGoCache.set(a,{value:e,fetchedAt:n}),e}catch(c){return{message:"OpenCode Go quota API request failed.",quotas:{}}}}' +
+    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a),"alitp-intl":a=>qtpAlibaba(a),"opencode-go":a=>qtpOpenCodeGo(a.apiKey,a.proxyOptions)};`
   );
 }
 
@@ -962,7 +1092,7 @@ function buildUsagePatched(original) {
   return patched;
 }
 
-function buildProvidersPatched(original) {
+function buildProvidersPatched(original, options = {}) {
   const usagePattern =
     /((?:[A-Za-z_$][\w$]*\.)+filter\(([A-Za-z_$][\w$]*)=>\2\.features\?\.usage\)\.map\(\2=>\2\.id\))/;
   const apiKeyPattern =
@@ -973,10 +1103,12 @@ function buildProvidersPatched(original) {
   if (!apiKeyPattern.test(original)) {
     throw new Error("Provider client allow-list marker not found");
   }
-  const usageProviders =
-    '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"';
-  const apiKeyProviders =
-    '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"';
+  const usageProviders = options.includeOpenCodeGo === false
+    ? '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"'
+    : '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan","opencode-go","alitp-intl"';
+  const apiKeyProviders = options.includeOpenCodeGo === false
+    ? '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"'
+    : '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan","opencode-go","alitp-intl"';
   return original
     .replace(usagePattern, (expression) =>
       `[...new Set([...${expression},${usageProviders}])]`)
@@ -1078,12 +1210,15 @@ function buildLegacyPatched(relative, original) {
   if (relative === USAGE_RELATIVE) return buildLegacyUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildLegacyUiPatched(original);
   if (OPENCODE_GO_DIRECT_RELATIVES.has(relative)) {
-    return buildProviderCatalogPatched(original);
+    return buildProviderCatalogPatched(original, { usageFeatures: false });
   }
-  if (OPENCODE_GO_CATALOG_RELATIVES.has(relative)) {
-    return buildProvidersPatched(buildProviderCatalogPatched(original));
+  if (isCatalogTarget(relative, original) || OPENCODE_GO_CATALOG_RELATIVES.has(relative)) {
+    return buildProvidersPatched(
+      buildProviderCatalogPatched(original, { usageFeatures: false }),
+      { includeOpenCodeGo: false },
+    );
   }
-  return buildProvidersPatched(original);
+  return buildProvidersPatched(original, { includeOpenCodeGo: false });
 }
 
 function buildPatched(relative, original) {
@@ -1115,6 +1250,7 @@ function saveOriginal(relative, content) {
 
 function apply() {
   assertVersion();
+  assertKnownCatalog();
   const entries = Object.entries(CATALOG_HASHES).map(([relative, expectedHash]) => {
     const file = path.join(SERVER_ROOT, relative);
     let content = fs.readFileSync(file, "utf8");
@@ -1203,6 +1339,7 @@ function apply() {
 
 function rollback() {
   assertVersion();
+  assertKnownCatalog();
   const entries = Object.keys(CATALOG_HASHES).map((relative) => {
     const file = path.join(SERVER_ROOT, relative);
     const saved = originalPath(relative);
@@ -1321,6 +1458,7 @@ module.exports = {
   qtpParseCline,
   qtpParseMimo,
   qtpParseOpenRouter,
+  qtpParseOpenCodeGo,
   qtpNormalizeXai,
   qtpQuota,
   qtpLocalQuota,

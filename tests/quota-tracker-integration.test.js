@@ -436,6 +436,7 @@ const patchSource = fs.readFileSync(path.join(__dirname, "../patches/quota-track
 const providerCatalogMarker = "/* QuotaTrackerAlibabaProvider:v1 */";
 const openCodeCatalogMarker = "/* OpenCodeGoCatalog:v1 */";
 const openCodeRuntimeMarker = "/* OpenCodeGoRuntime:v1 */";
+const openCodeUsageMarker = "/* OpenCodeGoUsage:v1 */";
 const usageMarker = "/* QuotaTrackerPatch:v2 */";
 const providersMarker = "/* QuotaTrackerProviders:v2 */";
 const uiMarker = "/* QuotaTrackerCurrency:v2 */";
@@ -544,6 +545,42 @@ assert.ok(
   scratchOpenCodeRuntime.includes(openCodeRuntimeMarker),
   "OpenCode Go runtime chunk must contain OPEN_CODE_RUNTIME_MARKER",
 );
+assert.ok(
+  scratchOpenCodeCatalog.includes(openCodeUsageMarker),
+  "OpenCode Go catalog chunk must enable usage features",
+);
+assert.ok(
+  scratchOpenCodeCatalog.includes("usage:!0") && scratchOpenCodeCatalog.includes("usageApikey:!0"),
+  "OpenCode Go catalog object must set usage and usageApikey",
+);
+const scratchUsageChunk = fs.readFileSync(path.join(serverRoot, "chunks/7211.js"), "utf8");
+assert.ok(
+  scratchUsageChunk.includes("qtpParseOpenCodeGo"),
+  "usage chunk must contain OpenCode Go parser",
+);
+assert.ok(
+  scratchUsageChunk.includes('"opencode-go":a=>qtpOpenCodeGo'),
+  "usage dispatch must route opencode-go to qtpOpenCodeGo",
+);
+assert.ok(
+  scratchUsageChunk.includes("https://opencode.ai/zen/go/v1/usage"),
+  "usage chunk must call the OpenCode Go usage endpoint",
+);
+assert.ok(
+  scratchUsageChunk.includes("Mozilla/5.0"),
+  "OpenCode Go usage fetch must send a browser User-Agent",
+);
+assert.ok(
+  scratchUsageChunk.includes('"opencode-go"') &&
+    scratchUsageChunk.includes("qwen-cloud-token-plan") &&
+    /opencode-go/.test(scratchUsageChunk.slice(scratchUsageChunk.indexOf("qtpProviders"))),
+  "usage allow-list / dispatch must include opencode-go",
+);
+const scratchProvidersAllow = fs.readFileSync(path.join(serverRoot, "chunks/615.js"), "utf8");
+assert.ok(
+  scratchProvidersAllow.includes('"opencode-go"'),
+  "usage allow-list in 615.js must include opencode-go",
+);
 const scratchQuotaPage = fs.readFileSync(
   path.join(serverRoot, "app/(dashboard)/dashboard/quota/page.js"),
   "utf8",
@@ -620,6 +657,40 @@ const migrated615 = fs.readFileSync(path.join(serverRoot, "chunks/615.js"), "utf
 assert.ok(migrated615.includes(providerCatalogMarker), "migrated 615.js must contain new PROVIDER_CATALOG_MARKER");
 assert.ok(migrated615.includes("qwen-cloud-token-plan"), "migrated 615.js must contain canonical provider");
 
+// Test B2b: OpenCode Go catalog without usage features must migrate on --apply
+runScratchPatch(["--rollback"]);
+const original4963Content = fs.readFileSync(path.join(srcVariantDir, "server/chunks/4963.js"), "utf8");
+const legacy4963 = buildProviderCatalogPatched(original4963Content, { usageFeatures: false });
+assert.ok(legacy4963.includes(openCodeCatalogMarker), "legacy 4963 must already have catalog marker");
+assert.ok(!legacy4963.includes(openCodeUsageMarker), "legacy 4963 must not yet have usage features");
+fs.writeFileSync(path.join(serverRoot, "chunks/4963.js"), legacy4963, "utf8");
+
+const original1321Content = fs.readFileSync(
+  path.join(srcVariantDir, "static/chunks/1321-54939b699b5f3d07.js"),
+  "utf8",
+);
+const legacy1321 = buildProvidersPatched(
+  buildProviderCatalogPatched(original1321Content, { usageFeatures: false }),
+  { includeOpenCodeGo: false },
+);
+fs.writeFileSync(
+  path.join(scratchRoot, "app/.next-cli-build/static/chunks/1321-54939b699b5f3d07.js"),
+  legacy1321,
+  "utf8",
+);
+const migrateOpenCodeUsage = runScratchPatch(["--apply"]).trim();
+assert.equal(migrateOpenCodeUsage, "applied", "apply must migrate OpenCode Go catalog to usage features");
+assert.ok(
+  fs.readFileSync(path.join(serverRoot, "chunks/4963.js"), "utf8").includes(openCodeUsageMarker),
+  "migrated 4963.js must contain OpenCode Go usage marker",
+);
+assert.ok(
+  fs.readFileSync(
+    path.join(scratchRoot, "app/.next-cli-build/static/chunks/1321-54939b699b5f3d07.js"),
+    "utf8",
+  ).includes(openCodeUsageMarker),
+  "migrated 1321 client chunk must contain OpenCode Go usage marker",
+);
 
 // Test B3: Valid legacy UI-patched page and client bundle safely migrated by --apply
 runScratchPatch(["--rollback"]);

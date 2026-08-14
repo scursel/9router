@@ -189,6 +189,41 @@ async function runAsyncTests() {
     }
   }
 
+  // 5b. Official alitp-intl rows must be included in the local meter query.
+  {
+    const source = qtpAlibaba.toString();
+    assert.match(
+      source,
+      /alitp-intl/,
+      "qtpAlibaba must query usageHistory for official alitp-intl as well as qwen-cloud-token-plan",
+    );
+
+    const now = Date.parse("2026-08-07T12:00:00.000Z");
+    const origDb = global._dbAdapter;
+    global._dbAdapter = {
+      instance: {
+        all(sql) {
+          assert.match(sql, /alitp-intl/);
+          assert.match(sql, /qwen-cloud-token-plan/);
+          return [
+            {
+              promptTokens: 40,
+              completionTokens: 10,
+              timestamp: new Date(now - 1800 * 1000).toISOString(),
+            },
+          ];
+        },
+      },
+    };
+    try {
+      const res = await qtpAlibaba({ provider: "alitp-intl" }, now);
+      assert.equal(res.quotas["Consumo 5h (medido local)"].used, 50);
+      assert.equal(res.source, "router-local");
+    } finally {
+      global._dbAdapter = origDb;
+    }
+  }
+
   // 6. Usage chunk loads getDb via webpack 89718/71998, not 36366 (other chunk).
   {
     const now = Date.parse("2026-08-07T12:00:00.000Z");

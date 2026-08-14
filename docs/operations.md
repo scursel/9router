@@ -95,3 +95,12 @@ O coletor do Alibaba Token Plan utiliza um **medidor local de janela deslizante 
 - **O que NÃO é**: **Não** reflete os "Credits" ou quotas oficiais do console da Alibaba Cloud (para os quais não existe API pública/oficial de consulta). Trata-se exclusivamente do consumo medido localmente pelo roteador.
 - **Sem credenciais de console**: Não exige cookies, `sec_token` ou variáveis de ambiente externas (`ALIBABA_TOKEN_PLAN_*`). Funciona 100% de forma local e durável.
 - **Limites opcionais**: Por padrão, o consumo é exibido de forma absoluta (ex.: `1.500 / ∞`). Se desejar exibir percentuais e saldo restante, configure os limites em tokens `limit5h` e `limit7d` (ou `quotaLimit5h`, `quotaLimit7d`) no campo `providerSpecificData` da conexão.
+
+## OpenCode Go (opencode-go)
+
+O coletor consulta `GET https://opencode.ai/zen/go/v1/usage` com a API key da conexão e um User-Agent de browser (o Cloudflare bloqueia UA de script).
+
+- **Janelas**: Rolling (5h), Weekly e Monthly, em percentual (0–100), com `resetsAt`.
+- **Cache**: 45 segundos em memória, por API key.
+- **Fail-closed**: key ausente, HTTP de erro ou payload sem janelas devolve mensagem e `quotas: {}` — nunca inventa número.
+- **Não oficial**: o endpoint existe e responde, mas a documentação pública ainda aponta só o console. `/zen/v1/usage` (sem `/go`) não existe.

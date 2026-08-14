@@ -14,6 +14,7 @@ const {
   qtpParseMimo,
   qtpParseOpenRouter,
   qtpNormalizeXai,
+  qtpParseOpenCodeGo,
 } = require(patchPath);
 
 const openRouter = qtpParseOpenRouter({
@@ -167,5 +168,34 @@ assert.equal(qtpParseOpenRouter({ data: {} }), null);
 assert.equal(qtpParseDeepSeek({ balance_infos: [] }), null);
 assert.equal(qtpParseCommandCode({ credits: {}, windowLimits: {} }), null);
 assert.equal(qtpParseMimo({ data: {} }), null);
+
+const openCodeGo = qtpParseOpenCodeGo({
+  usage: {
+    rolling: { status: "ok", percent: 12.5, resetsAt: "2026-08-14T19:38:42.207Z" },
+    weekly: { status: "ok", percent: 0, resetsAt: "2026-08-17T00:00:00.207Z" },
+    monthly: { status: "ok", percent: 40, resetsAt: "2026-09-12T12:23:26.207Z" },
+  },
+}, Date.parse("2026-08-14T14:00:00.000Z"));
+assert.equal(openCodeGo.plan, "OpenCode Go");
+assert.equal(openCodeGo.source, "opencode-go");
+assert.equal(openCodeGo.status, "ok");
+assert.equal(openCodeGo.quotas["Rolling (5h)"].used, 12.5);
+assert.equal(openCodeGo.quotas["Rolling (5h)"].total, 100);
+assert.equal(openCodeGo.quotas["Rolling (5h)"].remainingPercentage, 87.5);
+assert.equal(openCodeGo.quotas["Rolling (5h)"].resetAt, "2026-08-14T19:38:42.207Z");
+assert.equal(openCodeGo.quotas.Weekly.used, 0);
+assert.equal(openCodeGo.quotas.Weekly.remainingPercentage, 100);
+assert.equal(openCodeGo.quotas.Monthly.used, 40);
+assert.equal(openCodeGo.quotas.Monthly.resetAt, "2026-09-12T12:23:26.207Z");
+
+assert.equal(qtpParseOpenCodeGo({}), null);
+assert.equal(qtpParseOpenCodeGo({ usage: {} }), null);
+assert.equal(qtpParseOpenCodeGo({ usage: { rolling: { percent: "nope" } } }), null);
+
+const clamped = qtpParseOpenCodeGo({
+  usage: { rolling: { percent: 140, resetsAt: "2026-08-14T19:00:00.000Z" } },
+});
+assert.equal(clamped.quotas["Rolling (5h)"].used, 100);
+assert.equal(clamped.quotas["Rolling (5h)"].remainingPercentage, 0);
 
 console.log("quota tracker parser tests: ok");
