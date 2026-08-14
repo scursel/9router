@@ -1047,42 +1047,76 @@ function stripV1(content) {
   return clean;
 }
 
-function runtimeFunctions() {
-  return [
+function variantHasOfficialDeepSeekUsage() {
+  return /0\.5\.(45|50|55)$/.test(String(CATALOG_VARIANT));
+}
+
+function overlayUsageAllowIds(options = {}) {
+  if (options.legacyShadowAllowlist) {
+    const ids = ["openrouter", "deepseek", "commandcode"];
+    if (options.forApiKey !== true) ids.push("xai");
+    ids.push("xiaomi-mimo", "clinepass", "qwen-cloud-token-plan");
+    if (options.includeOpenCodeGo !== false) ids.push("opencode-go", "alitp-intl");
+    return ids.map((id) => JSON.stringify(id)).join(",");
+  }
+  const includeDeepSeek =
+    options.includeDeepSeek !== undefined
+      ? options.includeDeepSeek
+      : !variantHasOfficialDeepSeekUsage();
+  const ids = ["openrouter", "commandcode", "xiaomi-mimo", "clinepass", "qwen-cloud-token-plan"];
+  if (includeDeepSeek) ids.splice(1, 0, "deepseek");
+  if (options.includeOpenCodeGo !== false) ids.push("opencode-go", "alitp-intl");
+  return ids.map((id) => JSON.stringify(id)).join(",");
+}
+
+function runtimeFunctions(options = {}) {
+  const fns = [
     qtpNum,
     qtpReset,
     qtpDate,
     qtpQuota,
     qtpBalance,
     qtpParseOpenRouter,
-    qtpParseDeepSeek,
     qtpParseCommandCode,
-    qtpNormalizeXai,
     qtpParseMimo,
     qtpParseCline,
     qtpParseOpenCodeGo,
     qtpLocalQuota,
     qtpCalcSlidingWindowUsage,
     qtpAlibaba,
-  ]
-    .map((fn) => fn.toString())
-    .join("");
+  ];
+  if (options.includeDeepSeek) fns.splice(6, 0, qtpParseDeepSeek);
+  return fns.map((fn) => fn.toString()).join("");
 }
 
-function injectedCode(grokFn) {
+function injectedCode(options = {}) {
+  const includeDeepSeek = options.includeDeepSeek === true;
+  const deepSeekRuntime = includeDeepSeek
+    ? 'async function qtpDeepSeek(a,b){if(!a)return{message:"DeepSeek API key not available.",quotas:{}};let c=await qtpGet("https://api.deepseek.com/user/balance",a,b);if(!c.ok)return qtpError(c,"DeepSeek");let d=qtpParseDeepSeek(c.body);return d||{message:"DeepSeek connected. No balance data was returned.",quotas:{}}}'
+    : "";
+  const providerEntries = [
+    "openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions)",
+    includeDeepSeek ? "deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions)" : null,
+    "commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions)",
+    '"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions)',
+    "clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions)",
+    '"qwen-cloud-token-plan":a=>qtpAlibaba(a)',
+    '"alitp-intl":a=>qtpAlibaba(a)',
+    '"opencode-go":a=>qtpOpenCodeGo(a.apiKey,a.proxyOptions)',
+  ].filter(Boolean);
   return (
     MAIN_MARKER +
-    runtimeFunctions() +
+    runtimeFunctions({ includeDeepSeek }) +
     'async function qtpGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Authorization:"Bearer "+b,Accept:"application/json"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'function qtpError(a,b){return{message:b+" quota API "+(a.status?"error ("+a.status+").":a.error+"."),quotas:{}}}' +
     'async function qtpOpenRouter(a,b){if(!a)return{message:"OpenRouter API key not available.",quotas:{}};let c=await qtpGet("https://openrouter.ai/api/v1/credits",a,b);if(c.ok){let a=qtpParseOpenRouter(c.body);if(a)return a}let d=await qtpGet("https://openrouter.ai/api/v1/auth/key",a,b);if(d.ok){let a=qtpParseOpenRouter(d.body);if(a)return a}return qtpError(c.status===401||c.status===403?c:d,"OpenRouter")}' +
-    'async function qtpDeepSeek(a,b){if(!a)return{message:"DeepSeek API key not available.",quotas:{}};let c=await qtpGet("https://api.deepseek.com/user/balance",a,b);if(!c.ok)return qtpError(c,"DeepSeek");let d=qtpParseDeepSeek(c.body);return d||{message:"DeepSeek connected. No balance data was returned.",quotas:{}}}' +
+    deepSeekRuntime +
     'async function qtpCommandCode(a,b){if(!a)return{message:"CommandCode API key not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.commandcode.ai/alpha/billing/credits",a,b),qtpGet("https://api.commandcode.ai/alpha/billing/subscriptions",a,b)]);if(!c.ok)return qtpError(c,"CommandCode");let e=qtpParseCommandCode(c.body,d.ok?d.body:null);return e||{message:"CommandCode connected. No quota data was returned.",quotas:{}}}' +
     'async function qtpCookieGet(a,b,c){try{let g=await(0,d.proxyAwareFetch)(a,{method:"GET",headers:{Cookie:b,Accept:"application/json",Origin:"https://platform.xiaomimimo.com",Referer:"https://platform.xiaomimimo.com/#/console/balance","User-Agent":"Mozilla/5.0"}},c),h=await g.json().catch(()=>null);return{ok:g.ok,status:g.status,body:h}}catch(a){return{ok:!1,status:0,error:a?.name==="AbortError"?"timeout":"request failed"}}}' +
     'async function qtpMimo(a,b){let c=a?.quotaCookie||a?.cookie||process.env.MIMO_QUOTA_COOKIE;if(!c)return{message:"MiMo balance requires the console cookie in MIMO_QUOTA_COOKIE or providerSpecificData.quotaCookie.",quotas:{}};let d=await qtpCookieGet("https://platform.xiaomimimo.com/api/v1/balance",c,b);if(!d.ok)return qtpError(d,"MiMo");let e=qtpParseMimo(d.body);return e||{message:"MiMo connected. No balance data was returned.",quotas:{}}}' +
     'async function qtpCline(a,b){if(!a)return{message:"ClinePass credential not available.",quotas:{}};let[c,d]=await Promise.all([qtpGet("https://api.cline.bot/api/v1/users/me",a,b),qtpGet("https://api.cline.bot/api/v1/users/me/plan",a,b)]);if(!c.ok)return qtpError(c,"ClinePass");if(!d.ok)return qtpError(d,"ClinePass plan");let e=c.body?.data||c.body||{},g=e.id||e.uid;if(!g)return{message:"ClinePass user ID was not returned.",quotas:{}};let h=[],i="",j=Date.now()-2592e6;for(let c=0;c<100;c++){let e="https://api.cline.bot/api/v1/users/"+encodeURIComponent(g)+"/usages?limit=100"+(i?"&cursor="+encodeURIComponent(i):""),k=await qtpGet(e,a,b);if(!k.ok)return qtpError(k,"ClinePass usage");let l=k.body?.data||k.body||{},m=Array.isArray(l.items)?l.items:[];h.push(...m);i=String(l.nextToken||"");let n=m.map(a=>new Date(a?.createdAt).getTime()).filter(Number.isFinite),o=n.length?Math.min(...n):null;if(!i||!m.length||o!==null&&o<j)break}let k=qtpParseCline(d.body,h);return k||{message:"ClinePass connected. No active quota limits were returned.",quotas:{}}}' +
     'let qtpOpenCodeGoCache=new Map();async function qtpOpenCodeGo(a,b){if(!a)return{message:"OpenCode Go API key not available.",quotas:{}};let n=Date.now(),k=qtpOpenCodeGoCache.get(a);if(k&&n-k.fetchedAt<45e3)return k.value;try{let g=await(0,d.proxyAwareFetch)("https://opencode.ai/zen/go/v1/usage",{method:"GET",headers:{Authorization:"Bearer "+a,Accept:"application/json","User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"}},b),h=await g.json().catch(()=>null);if(!g.ok)return qtpError({status:g.status},"OpenCode Go");let e=qtpParseOpenCodeGo(h);if(!e)return{message:"OpenCode Go connected. No usage windows were returned.",quotas:{}};return qtpOpenCodeGoCache.set(a,{value:e,fetchedAt:n}),e}catch(c){return{message:"OpenCode Go quota API request failed.",quotas:{}}}}' +
-    `let qtpProviders={openrouter:a=>qtpOpenRouter(a.apiKey,a.proxyOptions),deepseek:a=>qtpDeepSeek(a.apiKey,a.proxyOptions),commandcode:a=>qtpCommandCode(a.apiKey,a.proxyOptions),xai:async a=>qtpNormalizeXai(await ${grokFn}(a.accessToken,a.providerSpecificData,a.proxyOptions)),"xiaomi-mimo":a=>qtpMimo(a.providerSpecificData,a.proxyOptions),clinepass:a=>qtpCline(a.apiKey||a.accessToken,a.proxyOptions),"qwen-cloud-token-plan":a=>qtpAlibaba(a),"alitp-intl":a=>qtpAlibaba(a),"opencode-go":a=>qtpOpenCodeGo(a.apiKey,a.proxyOptions)};`
+    `let qtpProviders={${providerEntries.join(",")}};`
   );
 }
 
@@ -1093,52 +1127,15 @@ function buildUsagePatched(original) {
   }
   const dispatchVar = dispatchMatch[1];
   const dispatchMarker = dispatchMatch[0];
-
-  const grokMatch = original.match(
-    /"grok-cli":([A-Za-z_$][\w$]*)=>([A-Za-z_$][\w$]*)\(\1\.accessToken,\1\.providerSpecificData,\1\.proxyOptions\)/,
-  );
-  if (!grokMatch) {
-    throw new Error("Native Grok usage marker not found");
-  }
-  const grokArg = grokMatch[1];
-  const grokFn = grokMatch[2];
-  const grokMarker = grokMatch[0];
-
-  const errorIdx = original.indexOf("Grok CLI usage error");
-  if (errorIdx < 0) {
+  if (!original.includes("Grok CLI usage error")) {
     throw new Error("Native Grok error marker not found");
   }
-  const beforeError = original.slice(0, errorIdx);
-  const resultRe = /return\{plan:([A-Za-z_$][\w$]*)\.plan,quotas:\1\.quotas\}/g;
-  let resultMatch = null;
-  let m;
-  while ((m = resultRe.exec(beforeError))) resultMatch = m;
-  if (!resultMatch) {
-    throw new Error("Native Grok result marker not found");
-  }
-  const planVar = resultMatch[1];
-  const resultMarker = `return{plan:${planVar}.plan,quotas:${planVar}.quotas}`;
-  const resultPatched = `return{plan:${planVar}.plan,quotas:${planVar}.quotas,rawConfig:${planVar}.rawConfig}`;
 
-  // 0.5.40: empty message object is closed then success return follows.
-  // 0.5.45: empty branch is a separate if/return; only the success return needs rawConfig.
-  const emptyMarker040 = `quotas:{}};return{plan:${planVar}.plan,quotas:${planVar}.quotas}`;
-  const emptyPatched040 = `quotas:{},rawConfig:${planVar}.rawConfig};return{plan:${planVar}.plan,quotas:${planVar}.quotas,rawConfig:${planVar}.rawConfig}`;
-
-  let patched = original;
-  if (patched.includes(emptyMarker040)) {
-    patched = patched.replace(emptyMarker040, emptyPatched040);
-  } else {
-    patched = patched.replace(resultMarker, resultPatched);
-  }
-
-  patched = patched
-    .replace(dispatchMarker, `${injectedCode(grokFn)}let ${dispatchVar}={...qtpProviders,github:`)
-    .replace(
-      grokMarker,
-      `"grok-cli":async ${grokArg}=>qtpNormalizeXai(await ${grokFn}(${grokArg}.accessToken,${grokArg}.providerSpecificData,${grokArg}.proxyOptions))`,
-    );
-  return patched;
+  const includeDeepSeek = !/[,{]deepseek:/.test(original);
+  return original.replace(
+    dispatchMarker,
+    `${injectedCode({ includeDeepSeek })}let ${dispatchVar}={...qtpProviders,github:`,
+  );
 }
 
 function buildProvidersPatched(original, options = {}) {
@@ -1152,12 +1149,8 @@ function buildProvidersPatched(original, options = {}) {
   if (!apiKeyPattern.test(original)) {
     throw new Error("Provider client allow-list marker not found");
   }
-  const usageProviders = options.includeOpenCodeGo === false
-    ? '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan"'
-    : '"openrouter","deepseek","commandcode","xai","xiaomi-mimo","clinepass","qwen-cloud-token-plan","opencode-go","alitp-intl"';
-  const apiKeyProviders = options.includeOpenCodeGo === false
-    ? '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan"'
-    : '"openrouter","deepseek","commandcode","xiaomi-mimo","clinepass","qwen-cloud-token-plan","opencode-go","alitp-intl"';
+  const usageProviders = overlayUsageAllowIds(options);
+  const apiKeyProviders = overlayUsageAllowIds({ ...options, forApiKey: true });
   return original
     .replace(usagePattern, (expression) =>
       `[...new Set([...${expression},${usageProviders}])]`)
@@ -1275,6 +1268,11 @@ function buildPatched(relative, original, options = {}) {
     options.injectCanonicalProvider !== undefined
       ? options.injectCanonicalProvider
       : !catalogUsesNativeAlitp();
+  const providerOptions = {
+    includeDeepSeek: options.includeDeepSeek,
+    includeOpenCodeGo: options.includeOpenCodeGo,
+    legacyShadowAllowlist: options.legacyShadowAllowlist,
+  };
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
   if (isCatalogTarget(relative, original)) {
@@ -1284,15 +1282,25 @@ function buildPatched(relative, original, options = {}) {
     ) {
       return catalog;
     }
-    return buildProvidersPatched(catalog);
+    return buildProvidersPatched(catalog, providerOptions);
   }
-  return buildProvidersPatched(original);
+  return buildProvidersPatched(original, providerOptions);
 }
 
 function isRecognizedPatched(relative, original, content) {
   if (content === buildPatched(relative, original)) return true;
   if (content === buildLegacyPatched(relative, original)) return true;
   if (content === buildPatched(relative, original, { injectCanonicalProvider: true })) return true;
+  if (content === buildPatched(relative, original, { legacyShadowAllowlist: true })) return true;
+  if (
+    content ===
+    buildPatched(relative, original, {
+      injectCanonicalProvider: true,
+      legacyShadowAllowlist: true,
+    })
+  ) {
+    return true;
+  }
   return false;
 }
 

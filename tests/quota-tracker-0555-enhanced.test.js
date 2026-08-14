@@ -62,6 +62,9 @@ assert.ok(usage.includes("https://opencode.ai/zen/go/v1/usage"));
 assert.ok(usage.includes('"opencode-go":a=>qtpOpenCodeGo'));
 assert.ok(usage.includes('"alitp-intl":a=>qtpAlibaba'));
 assert.ok(usage.includes('"qwen-cloud-token-plan":a=>qtpAlibaba'));
+assert.ok(!usage.includes("qtpDeepSeek"), "enhanced 0.5.55 must keep official DeepSeek usage");
+assert.ok(!usage.includes("qtpNormalizeXai"), "enhanced 0.5.55 must keep official Grok usage unwrapped");
+assert.ok(/deepseek:a=>[A-Za-z_$]/.test(usage), "official DeepSeek dispatch must remain");
 
 const catalog = fs.readFileSync(
   path.join(scratch, "app/.next-cli-build/server/chunks/3547.js"),

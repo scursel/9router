@@ -49,6 +49,10 @@ the same product; older catalogs (0.5.50 and below) still get the overlay
 provider. The local meter still reads `usageHistory` for both IDs so pre-cutover
 rows keep counting.
 
+Official DeepSeek and Grok usage handlers are left in place. The overlay only
+adds collectors official does not ship: OpenRouter, CommandCode, ClinePass,
+Xiaomi MiMo, Alibaba local 5h/7d, and OpenCode Go `/zen/go/v1/usage`.
+
 Only the enhanced tarball carries the tool-loop breaker.
 
 ## Validation (isolated)

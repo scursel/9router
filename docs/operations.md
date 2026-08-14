@@ -16,12 +16,12 @@ enhanced); existing 0.5.35–0.5.50 catalogs remain supported.
 ## Providers
 
 - OpenRouter credits and usage in USD.
-- DeepSeek available, promotional, and topped-up balances.
 - CommandCode monthly balance plus 5-hour and 7-day windows.
-- xAI/Grok subscription quota and prepaid balance.
 - Xiaomi MiMo paid and granted balances through a console session cookie.
 - ClinePass 5-hour, 7-day, and 30-day quota windows.
-- Alibaba Token Plan 5-hour and 7-day quota windows.
+- Alibaba Token Plan 5-hour and 7-day quota windows (local meter).
+- OpenCode Go rolling / weekly / monthly usage.
+- DeepSeek balance only on 0.5.35/0.5.40 (official handler from 0.5.45).
 ## Commands
 
 ```bash
@@ -75,15 +75,13 @@ The pre-fix operational backup, including the SQLite database, systemd unit,
 startup script, bundles, patchers, and checksums, is stored in
 `~/.9router/backups/quota-tracker-v2-20260711-225500/`.
 
-## Grok
+## Grok / DeepSeek
 
-The Grok collector uses the xAI OAuth connection already stored by 9Router. If
-that session and its refresh token have expired, reconnect xAI in the Providers
-screen. A normal xAI OAuth token is not a Management API key and is never sent
-to the xAI Management API by this patch. When the billing response provides
-`creditUsagePercent` and a weekly period but no absolute allotment, the tracker
-shows a 100-point percentage bar with the provider's period end as its reset
-time. It does not estimate or invent a credit total.
+On 0.5.45+ the overlay leaves official `grok-cli` and `deepseek` usage
+handlers untouched. Official Grok already covers SuperGrok weekly credits and
+prepaid; official DeepSeek already calls `GET /user/balance`. The overlay
+DeepSeek collector remains only on 0.5.35/0.5.40 catalogs that lack a native
+handler.
 
 ## Alibaba Token Plan (`alitp-intl`)
 
