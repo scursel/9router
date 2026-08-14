@@ -85,6 +85,9 @@ regression evidence (before/after streaming traces), and rollback.
 
 For upstream `0.5.50`, use the separately ported source diff
 [`patches/antigravity-tool-loop-breaker-0.5.50.patch`](patches/antigravity-tool-loop-breaker-0.5.50.patch).
+For `0.5.55`, use
+[`patches/antigravity-tool-loop-breaker-0.5.55.patch`](patches/antigravity-tool-loop-breaker-0.5.55.patch)
+and install the rebuilt enhanced tarball — official npm does not include the breaker.
 The original diff no longer applies because upstream changed the same
 translator files after `0.5.45`.
 

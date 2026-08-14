@@ -26,6 +26,7 @@ const UI_RELATIVES = new Set([
   "../static/chunks/app/(dashboard)/dashboard/quota/page-14020782e8f3bc6b.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-b571eafb19552ce1.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-b230ee0b12eb9318.js",
 ]);
 const SUPPORTED_VERSIONS = new Set(["0.5.35", "0.5.40", "0.5.45", "0.5.50", "0.5.55"]);
 const UPSTREAM_CATALOG_HASHES = {
@@ -262,8 +263,35 @@ const OFFICIAL_0555_CATALOG_HASHES = {
   "chunks/869.js": "052d4e6272bbc62e96214c47738d747ddedb6186193f183ada7405fca2a8289f",
   "chunks/8847.js": "a38bd6643e01af85e4d2463207df86ef88170bc77b8b60d438fbba2a01f006df",
 };
+const ENHANCED_0555_CATALOG_HASHES = {
+  "../static/chunks/1321-914afc18e65fc58b.js": "d627413fae30d918b98a6655b051c19c84b2c0d72c199ae116d056c85364ee4f",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-b230ee0b12eb9318.js": "60a845a0637445794d1de7999b94795c01575ef8bb435fab9d6f08145a38aad8",
+  "app/(dashboard)/dashboard/quota/page.js": "00380492953ebed09e0198dc6266cae829887fea950a8400c11ce2a5188585d1",
+  "app/api/provider-nodes/route.js": "7398eaf7eb7621cadd883d38582957ea7a078433342dfb44bb956417514d0b39",
+  "app/api/providers/client/route.js": "b4d24267f87e6c391ff710dc7975d2c0110036587a348ec99b907d573a8ae3d4",
+  "app/api/providers/validate/route.js": "fa36a7599dcf79279903248346ec740566d8997d8c90c0cc0616c044abba2172",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "7a0de47b8967fbcb515ef5139a8a5d2b63901a2cf21fb2079d2109038234237d",
+  "app/api/usage/[connectionId]/route.js": "3bfc785880412d986a96ed04210a3d1a306d7e7a7559d1d2a07aa3413160e185",
+  "app/api/usage/providers/route.js": "6ba8c1f4c3402a29807bae52467399b6bb2cb6dc948b6dcb76a65343114c2f0c",
+  "app/api/v1/audio/voices/route.js": "8b7b92cbc1870cafdaf578788096bed0162d52138014d382cb50ff985a7b559f",
+  "app/api/v1/models/info/route.js": "f8e942a06346c597ce01f10b7fd739ebe94bf57803be8e8d8380c56f7f239836",
+  "app/api/v1beta/models/route.js": "bb71980bf919a84e6c3209bf4cf823c31c0ec374da81a131cb1b87d1be50c449",
+  "chunks/3547.js": "88c69e2fdcfa8f47cc27f0a4990da909c741eadefa6163faf02f6b30880f5929",
+  "chunks/4953.js": "68364a5b999f570106770685b5fc073257b784a40ada00717f74586732e9043f",
+  "chunks/5285.js": "d00899b0b3146c5a286b085623648be91d23272ff37219f318c2ecda9fc487b1",
+  "chunks/615.js": "d307c504fb65e4a2aa00ad88c50f837bdf3e3e6f2d8b4b0caafbca8c9fc9ed7a",
+  "chunks/7211.js": "81d80874305ea7013c386394451a878cf6a589c678d0da271cf0237e863e2b25",
+  "chunks/827.js": "86135077b3167ff07054fbf49504e2419545689f87d13a4220fe4663e3121e52",
+  "chunks/869.js": "052d4e6272bbc62e96214c47738d747ddedb6186193f183ada7405fca2a8289f",
+  "chunks/8847.js": "f9adaa3f82941e633ad42de262010ac79a2bfa62b14b3b111a61fde58ea43a71",
+};
 // Fingerprint files are unique per official/enhanced build of each release.
 const CATALOG_VARIANTS = [
+  {
+    name: "enhanced-0.5.55",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-b230ee0b12eb9318.js",
+    hashes: ENHANCED_0555_CATALOG_HASHES,
+  },
   {
     name: "official-0.5.55",
     fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-b571eafb19552ce1.js",
@@ -345,6 +373,7 @@ const OPENCODE_GO_CATALOG_RELATIVES = new Set([
   "chunks/4963.js",
   "chunks/4695.js",
   "chunks/5619.js",
+  "chunks/3547.js",
   "chunks/4953.js",
   "chunks/5285.js",
   "chunks/7011.js",

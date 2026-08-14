@@ -43,6 +43,11 @@ hand on the `open-sse/` tree (the unified diff no longer applies cleanly).
 For 0.5.50, use the separately generated
 `patches/antigravity-tool-loop-breaker-0.5.50.patch`; it applies cleanly to
 `v0.5.50` and was validated against the upstream Antigravity regression suite.
+For 0.5.55, use
+`patches/antigravity-tool-loop-breaker-0.5.55.patch` (the 0.5.50 diff applies
+cleanly to `v0.5.55`; the 0.5.55 file is the captured source diff after that
+apply). Official npm `9router@0.5.55` does not include the breaker — install
+the rebuilt enhanced tarball.
 
 ```bash
 git clone https://github.com/decolua/9router.git

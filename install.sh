@@ -22,6 +22,7 @@ install -m 755 "$ROOT/patches/cors-preflight.patch.js" "$PATCH_DIR/cors-prefligh
 install -m 644 "$ROOT/docs/cors-preflight.md" "$PATCH_DIR/cors-preflight.README.md"
 install -m 644 "$ROOT/patches/antigravity-tool-loop-breaker.patch" "$PATCH_DIR/antigravity-tool-loop-breaker.patch"
 install -m 644 "$ROOT/patches/antigravity-tool-loop-breaker-0.5.50.patch" "$PATCH_DIR/antigravity-tool-loop-breaker-0.5.50.patch"
+install -m 644 "$ROOT/patches/antigravity-tool-loop-breaker-0.5.55.patch" "$PATCH_DIR/antigravity-tool-loop-breaker-0.5.55.patch"
 install -m 755 "$ROOT/scripts/start-9router.sh" "$SCRIPT_DIR/start-9router.sh"
 install -m 644 "$ROOT/systemd/9router.service" "$SYSTEMD_DIR/9router.service"
 
