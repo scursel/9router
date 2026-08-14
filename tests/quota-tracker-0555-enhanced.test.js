@@ -70,14 +70,31 @@ const catalog = fs.readFileSync(
 assert.ok(catalog.includes("/* OpenCodeGoUsage:v1 */"));
 assert.ok(catalog.includes('id:"alitp-intl"'));
 assert.ok(catalog.includes("transports:[{format:\"openai\""));
-assert.ok(catalog.includes("qwen-cloud-token-plan"));
+assert.ok(catalog.includes("/* AlitpUsage:v1 */"));
+assert.ok(
+  !catalog.includes('"id":"qwen-cloud-token-plan"') && !catalog.includes('id:"qwen-cloud-token-plan"'),
+  "enhanced 0.5.55 catalog must use native alitp-intl instead of injecting qwen-cloud-token-plan",
+);
 
 const client = fs.readFileSync(
   path.join(scratch, "app/.next-cli-build/static/chunks/1321-914afc18e65fc58b.js"),
   "utf8",
 );
 assert.ok(client.includes("/* OpenCodeGoUsage:v1 */"));
-assert.ok(client.includes("qwen-cloud-token-plan"));
+assert.ok(client.includes("/* AlitpUsage:v1 */"));
+assert.ok(
+  !client.includes('"id":"qwen-cloud-token-plan"') && !client.includes('id:"qwen-cloud-token-plan"'),
+  "enhanced 0.5.55 client catalog must not inject qwen-cloud-token-plan",
+);
+const server615 = fs.readFileSync(
+  path.join(scratch, "app/.next-cli-build/server/chunks/615.js"),
+  "utf8",
+);
+assert.ok(server615.includes("/* QuotaTrackerAlibabaProvider:v1 */"));
+assert.ok(
+  !server615.includes('"id":"qwen-cloud-token-plan"') && !server615.includes('id:"qwen-cloud-token-plan"'),
+  "enhanced 0.5.55 615.js must not inject qwen-cloud-token-plan",
+);
 
 assert.equal(run(["--apply"]).trim(), "already applied");
 assert.equal(run(["--rollback"]).trim(), "rolled back");

@@ -485,8 +485,23 @@ function patchAlitpUsageFeatures(content) {
   );
 }
 
+let nativeAlitpCatalogCache = null;
+function catalogUsesNativeAlitp() {
+  if (nativeAlitpCatalogCache != null) return nativeAlitpCatalogCache;
+  nativeAlitpCatalogCache = Object.keys(CATALOG_HASHES).some((relative) => {
+    const file = path.join(SERVER_ROOT, relative);
+    if (!fs.existsSync(file)) return false;
+    return fs.readFileSync(file, "utf8").includes('id:"alitp-intl"');
+  });
+  return nativeAlitpCatalogCache;
+}
+
 function buildProviderCatalogPatched(original, options = {}) {
   const usageFeatures = options.usageFeatures !== false;
+  const injectCanonical =
+    options.injectCanonicalProvider !== undefined
+      ? options.injectCanonicalProvider
+      : !original.includes('id:"alitp-intl"');
   if (original.includes(PROVIDER_CATALOG_MARKER)) {
     return usageFeatures ? patchAlitpUsageFeatures(patchOpenCodeGoUsageFeatures(original)) : original;
   }
@@ -502,7 +517,7 @@ function buildProviderCatalogPatched(original, options = {}) {
     catalogModuleIdx >= 0
       ? result.slice(catalogModuleIdx).match(/var d=c\(\d+\);/)
       : null;
-  if (serverRequireMatch) {
+  if (injectCanonical && serverRequireMatch) {
     const serverEntry = JSON.stringify(CANONICAL_PROVIDER);
     const injectCode = `{let a=${serverEntry};d.A.some(b=>b.id===a.id)||d.A.push(a);}`;
     const insertAt =
@@ -515,7 +530,7 @@ function buildProviderCatalogPatched(original, options = {}) {
 
   // Client chunk 1321-*.js
   const anchorIdx = result.indexOf('id:"alicode-intl"');
-  if (anchorIdx >= 0 && !serverRequireMatch) {
+  if (injectCanonical && anchorIdx >= 0 && !serverRequireMatch) {
     let arrStart = -1;
     for (let i = anchorIdx; i >= 0; i--) {
       if (result[i] === "[" && (result[i - 1] === "=" || result[i - 1] === ":")) {
@@ -558,23 +573,28 @@ function buildProviderCatalogPatched(original, options = {}) {
     );
   }
 
-  // Test route switch case in chunks/827.js
-  const nvidiaCase = 'case"nvidia":{let c=await t("https://integrate.api.nvidia.com/v1/models"';
-  if (result.includes(nvidiaCase)) {
-    const qctTestCode = 'case"qwen-cloud-token-plan":case"qct":{let c=await t("https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models",{headers:{Authorization:`Bearer ${a.apiKey}`}},b);return{valid:c.ok,error:c.ok?null:"Invalid API key"}}';
-    result = result.replace(nvidiaCase, qctTestCode + nvidiaCase);
-  }
-  // Validate route switch case in validate/route.js
-  const nvidiaMulti = 'case"xiaomi-tokenplan":case"nvidia":';
-  if (result.includes(nvidiaMulti)) {
-    result = result.replace(nvidiaMulti, 'case"xiaomi-tokenplan":case"nvidia":case"qwen-cloud-token-plan":case"qct":');
-    const xmtpMap = '"xiaomi-tokenplan":`${(0,h.Yg)({providerSpecificData:o})}/models`';
-    if (result.includes(xmtpMap)) {
-      result = result.replace(xmtpMap, xmtpMap + ',"qwen-cloud-token-plan":"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models","qct":"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models"');
+  if (injectCanonical) {
+    // Test route switch case in chunks/827.js
+    const nvidiaCase = 'case"nvidia":{let c=await t("https://integrate.api.nvidia.com/v1/models"';
+    if (result.includes(nvidiaCase)) {
+      const qctTestCode = 'case"qwen-cloud-token-plan":case"qct":{let c=await t("https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models",{headers:{Authorization:`Bearer ${a.apiKey}`}},b);return{valid:c.ok,error:c.ok?null:"Invalid API key"}}';
+      result = result.replace(nvidiaCase, qctTestCode + nvidiaCase);
+    }
+    // Validate route switch case in validate/route.js
+    const nvidiaMulti = 'case"xiaomi-tokenplan":case"nvidia":';
+    if (result.includes(nvidiaMulti)) {
+      result = result.replace(nvidiaMulti, 'case"xiaomi-tokenplan":case"nvidia":case"qwen-cloud-token-plan":case"qct":');
+      const xmtpMap = '"xiaomi-tokenplan":`${(0,h.Yg)({providerSpecificData:o})}/models`';
+      if (result.includes(xmtpMap)) {
+        result = result.replace(xmtpMap, xmtpMap + ',"qwen-cloud-token-plan":"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models","qct":"https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models"');
+      }
     }
   }
 
   if (result === original) {
+    if (!injectCanonical && (original.includes("40615:(") || original.includes('id:"alitp-intl"'))) {
+      return original + PROVIDER_CATALOG_MARKER;
+    }
     throw new Error("Target chunk for provider catalog patch not recognized");
   }
 
@@ -1250,11 +1270,15 @@ function buildLegacyPatched(relative, original) {
   return buildProvidersPatched(original, { includeOpenCodeGo: false });
 }
 
-function buildPatched(relative, original) {
+function buildPatched(relative, original, options = {}) {
+  const injectCanonicalProvider =
+    options.injectCanonicalProvider !== undefined
+      ? options.injectCanonicalProvider
+      : !catalogUsesNativeAlitp();
   if (relative === USAGE_RELATIVE) return buildUsagePatched(original);
   if (UI_RELATIVES.has(relative)) return buildUiPatched(original);
   if (isCatalogTarget(relative, original)) {
-    const catalog = buildProviderCatalogPatched(original);
+    const catalog = buildProviderCatalogPatched(original, { injectCanonicalProvider });
     if (
       OPENCODE_GO_DIRECT_RELATIVES.has(relative)
     ) {
@@ -1263,6 +1287,13 @@ function buildPatched(relative, original) {
     return buildProvidersPatched(catalog);
   }
   return buildProvidersPatched(original);
+}
+
+function isRecognizedPatched(relative, original, content) {
+  if (content === buildPatched(relative, original)) return true;
+  if (content === buildLegacyPatched(relative, original)) return true;
+  if (content === buildPatched(relative, original, { injectCanonicalProvider: true })) return true;
+  return false;
 }
 
 function originalPath(relative) {
@@ -1339,10 +1370,8 @@ function apply() {
       if (hash(original) !== entry.expectedHash) {
         throw new Error(`Saved original hash mismatch for ${entry.relative}`);
       }
-      const expectedNew = buildPatched(entry.relative, original);
-      const expectedLegacy = buildLegacyPatched(entry.relative, original);
       const isRecognizedUsage = entry.relative === USAGE_RELATIVE && entry.content.includes(MAIN_MARKER);
-      if (entry.content !== expectedNew && entry.content !== expectedLegacy && !isRecognizedUsage) {
+      if (!isRecognizedPatched(entry.relative, original, entry.content) && !isRecognizedUsage) {
         throw new Error(`Unsafe partial patch recovery for ${entry.relative}`);
       }
       restore.push({ file: entry.file, original });
@@ -1403,7 +1432,7 @@ function rollback() {
   for (const entry of entries) {
     if (entry.hasMarker) {
       const isRecognizedUsage = entry.relative === USAGE_RELATIVE && entry.current.includes(MAIN_MARKER);
-      if (entry.current !== entry.expectedNew && entry.current !== entry.expectedLegacy && !isRecognizedUsage) {
+      if (!isRecognizedPatched(entry.relative, entry.original, entry.current) && !isRecognizedUsage) {
         throw new Error(`Patched bundle changed unexpectedly: ${entry.relative}`);
       }
     }
@@ -1437,9 +1466,7 @@ function sanitize() {
     if (hash(original) !== CATALOG_HASHES[relative]) {
       throw new Error(`Saved original hash mismatch for sanitization: ${relative}`);
     }
-    const expectedNew = buildPatched(relative, original);
-    const expectedLegacy = buildLegacyPatched(relative, original);
-    if (current !== expectedNew && current !== expectedLegacy) {
+    if (!isRecognizedPatched(relative, original, current)) {
       throw new Error(`Refusing to sanitize an unknown patched bundle: ${relative}`);
     }
     atomicWrite(file, original);

@@ -85,11 +85,16 @@ to the xAI Management API by this patch. When the billing response provides
 shows a 100-point percentage bar with the provider's period end as its reset
 time. It does not estimate or invent a credit total.
 
-## Alibaba Token Plan (qwen-cloud-token-plan)
+## Alibaba Token Plan (`alitp-intl`)
 
-O coletor do Alibaba Token Plan utiliza um **medidor local de janela deslizante (5h / 7d)** calculado a partir do histórico de uso (`usageHistory`) do próprio 9Router.
+No 9Router 0.5.55+ o provider oficial é `alitp-intl` (Alibaba Token Plan).
+É o mesmo endpoint Singapore / Token Plan que o overlay chamava de
+`qwen-cloud-token-plan`. O inject do id antigo fica só nos catálogos
+0.5.50 e anteriores.
 
-- **Como funciona**: A cada consulta, o 9Router soma os tokens de entrada e saída (prompt + completion) registrados para o provider `qwen-cloud-token-plan` e/ou conexão nas janelas de **5 horas** e **7 dias** ancoradas em `Date.now()`.
+O coletor utiliza um **medidor local de janela deslizante (5h / 7d)** calculado a partir do histórico de uso (`usageHistory`) do próprio 9Router.
+
+- **Como funciona**: A cada consulta, o 9Router soma os tokens de entrada e saída (prompt + completion) registrados para o provider `alitp-intl` e o legado `qwen-cloud-token-plan` e/ou conexão nas janelas de **5 horas** e **7 dias** ancoradas em `Date.now()`.
 - **Origem dos dados (`source`)**: Identificado no dashboard como `router-local`.
 - **O que NÃO é**: **Não** reflete os "Credits" ou quotas oficiais do console da Alibaba Cloud (para os quais não existe API pública/oficial de consulta). Trata-se exclusivamente do consumo medido localmente pelo roteador.
 - **Sem credenciais de console**: Não exige cookies, `sec_token` ou variáveis de ambiente externas (`ALIBABA_TOKEN_PLAN_*`). Funciona 100% de forma local e durável.

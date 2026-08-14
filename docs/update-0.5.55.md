@@ -38,11 +38,16 @@ Unknown fingerprints fail closed. Apply/rollback refuse them.
 
 Preserved on both 0.5.55 variants:
 
-- `qwen-cloud-token-plan` inject (existing Ali connections keep working)
+- Official `alitp-intl` (same Singapore Token Plan endpoint and models)
 - `alitp-intl` usage features + local meter (`qtpAlibaba`)
 - OpenCode Go usage collector (`GET /zen/go/v1/usage`) without replacing official `transports`
 - CORS path derivation picks up the new `1321-914afc18e65fc58b.js` chunk
 - WAN image adapter (anchor-based, not hash-pinned)
+
+`qwen-cloud-token-plan` is **not** injected on 0.5.55. Official `alitp-intl` is
+the same product; older catalogs (0.5.50 and below) still get the overlay
+provider. The local meter still reads `usageHistory` for both IDs so pre-cutover
+rows keep counting.
 
 Only the enhanced tarball carries the tool-loop breaker.
 
