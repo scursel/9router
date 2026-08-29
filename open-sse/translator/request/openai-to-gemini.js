@@ -18,6 +18,8 @@ import {
 } from "../formats/gemini.js";
 import { deriveSessionId, toNumericSessionId } from "../../utils/sessionManager.js";
 import { ROLE, GEMINI_ROLE, OPENAI_BLOCK, CLAUDE_BLOCK } from "../schema/index.js";
+import { hasRepeatedTrailingToolCalls } from "../concerns/toolCall.js";
+import { TOOL_LOOP_BREAKER_THRESHOLD } from "../../config/appConstants.js";
 
 // Sanitize function names for Gemini API.
 // Gemini requires: starts with [a-zA-Z_], followed by [a-zA-Z0-9_.:\-], max 64 chars.
@@ -427,13 +429,22 @@ function isClaudeModel(model) {
 
 // OpenAI -> Antigravity (Sandbox Cloud Code with wrapper)
 export function openaiToAntigravityRequest(model, body, stream, credentials = null) {
+  const breakToolLoop = hasRepeatedTrailingToolCalls(body, TOOL_LOOP_BREAKER_THRESHOLD);
   if (isClaudeModel(model)) {
     const claudeRequest = openaiToClaudeRequestForAntigravity(model, body, stream);
-    return wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
+    const envelope = wrapInCloudCodeEnvelopeForClaude(model, claudeRequest, credentials);
+    if (breakToolLoop && envelope.request.toolConfig) {
+      envelope.request.toolConfig.functionCallingConfig.mode = "NONE";
+    }
+    return envelope;
   }
 
   const geminiCLI = openaiToGeminiCLIRequest(model, body, stream);
-  return wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
+  const envelope = wrapInCloudCodeEnvelope(model, geminiCLI, credentials, true);
+  if (breakToolLoop && envelope.request.toolConfig) {
+    envelope.request.toolConfig.functionCallingConfig.mode = "NONE";
+  }
+  return envelope;
 }
 
 // Register

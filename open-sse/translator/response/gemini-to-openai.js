@@ -6,6 +6,8 @@ import { toOpenAIUsage } from "../concerns/usage.js";
 import { reasoningDelta } from "../concerns/reasoning.js";
 import { encodeDataUri } from "../concerns/image.js";
 import { toOpenAIFinish } from "../concerns/finishReason.js";
+import { canonicalToolCallSignature } from "../concerns/toolCall.js";
+import { TOOL_LOOP_BREAKER_THRESHOLD } from "../../config/appConstants.js";
 
 // Build chunk meta for current gemini state
 function chunkMeta(state) {
@@ -18,6 +20,15 @@ function emitFunctionCall(functionCall, state) {
   // Restore original tool name from mapping (AG cloaking)
   const fcName = state.toolNameMap?.get(rawName) || rawName;
   const fcArgs = functionCall.args || {};
+  if (state.provider === FORMATS.ANTIGRAVITY) {
+    const signature = canonicalToolCallSignature([{
+      function: { name: fcName, arguments: fcArgs },
+    }]);
+    state.antigravityToolCallCounts ??= new Map();
+    const count = (state.antigravityToolCallCounts.get(signature) || 0) + 1;
+    state.antigravityToolCallCounts.set(signature, count);
+    if (count > TOOL_LOOP_BREAKER_THRESHOLD) return null;
+  }
   const toolCallIndex = state.functionIndex++;
   const toolCall = {
     id: `${fcName}-${Date.now()}-${toolCallIndex}`,
@@ -73,7 +84,8 @@ export function geminiToOpenAIResponse(chunk, state) {
         }
         
         if (hasFunctionCall) {
-          results.push(emitFunctionCall(part.functionCall, state));
+          const toolCallChunk = emitFunctionCall(part.functionCall, state);
+          if (toolCallChunk) results.push(toolCallChunk);
         }
         continue;
       }
@@ -92,7 +104,8 @@ export function geminiToOpenAIResponse(chunk, state) {
 
       // Function call
       if (part.functionCall) {
-        results.push(emitFunctionCall(part.functionCall, state));
+        const toolCallChunk = emitFunctionCall(part.functionCall, state);
+        if (toolCallChunk) results.push(toolCallChunk);
       }
 
       // Inline data (images)
