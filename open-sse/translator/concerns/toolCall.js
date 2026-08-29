@@ -3,6 +3,73 @@
 // Anthropic tool_use.id must match: ^[a-zA-Z0-9_-]+$
 const TOOL_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalize(value[key])])
+    );
+  }
+  return value;
+}
+
+export function canonicalToolCallSignature(toolCalls) {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
+  const calls = [];
+  for (const call of toolCalls) {
+    const name = call?.function?.name;
+    if (!name) return null;
+    let args = call.function.arguments ?? {};
+    if (typeof args === "string") {
+      try {
+        args = JSON.parse(args || "{}");
+      } catch {
+        args = args.trim();
+      }
+    }
+    calls.push({ name, arguments: canonicalize(args) });
+  }
+  return JSON.stringify(calls);
+}
+
+// Detect a trailing run of identical OpenAI assistant tool-call turns. Tool
+// result messages between assistant turns are ignored, while any ordinary
+// user/assistant turn ends the run. This is intentionally request-only: the
+// router does not retain cross-request conversation state.
+export function hasRepeatedTrailingToolCalls(body, threshold = 3) {
+  if (!Array.isArray(body?.messages) || threshold < 2) return false;
+
+  let expected = null;
+  let repeats = 0;
+  const trailingCallCounts = new Map();
+  for (let i = body.messages.length - 1; i >= 0; i--) {
+    const msg = body.messages[i];
+    if (msg?.role === "tool" || msg?.role === "function") continue;
+    if (msg?.role !== "assistant" || !Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) {
+      break;
+    }
+
+    // A provider may return the same call many times in one parallel batch.
+    // Count those calls individually; comparing only the whole tool_calls array
+    // would treat the batch as a single repetition and miss the loop.
+    for (const call of msg.tool_calls) {
+      const callSignature = canonicalToolCallSignature([call]);
+      if (!callSignature) continue;
+      const count = (trailingCallCounts.get(callSignature) || 0) + 1;
+      if (count >= threshold) return true;
+      trailingCallCounts.set(callSignature, count);
+    }
+
+    const signature = canonicalToolCallSignature(msg.tool_calls);
+    if (!signature) break;
+    if (expected === null) expected = signature;
+    if (signature !== expected) break;
+    repeats += 1;
+    if (repeats >= threshold) return true;
+  }
+  return false;
+}
+
 // Fallback streaming tool_call id when provider omits one (index optional)
 export function fallbackToolCallId(index) {
   return index === undefined ? `call_${Date.now()}` : `call_${index}_${Date.now()}`;

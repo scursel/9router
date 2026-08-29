@@ -30,6 +30,11 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+import { hasRepeatedTrailingToolCalls } from "../translator/concerns/toolCall.js";
+import {
+  TOOL_LOOP_BREAKER_MESSAGE,
+  TOOL_LOOP_BREAKER_THRESHOLD,
+} from "../config/appConstants.js";
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -199,6 +204,33 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     delete translatedBody._customToolNames;
     translatedBody.model = stripThinkingSuffix(upstreamModel);
     stripContinuityFields(translatedBody);
+  }
+
+  // Antigravity/Gemini can keep emitting the same tool call even after the
+  // client has returned identical no-progress results. The request translator
+  // marks the turn as NONE, but the provider executor may rebuild toolConfig.
+  // Enforce the circuit breaker at the final dispatch boundary by removing
+  // declarations for exactly one turn. The full history remains intact, so
+  // the model can summarize the accumulated tool results as text.
+  if (
+    provider === FORMATS.ANTIGRAVITY
+    && hasRepeatedTrailingToolCalls(body, TOOL_LOOP_BREAKER_THRESHOLD)
+  ) {
+    const outbound = translatedBody.request || translatedBody;
+    delete outbound.tools;
+    delete outbound.toolConfig;
+    const nudge = { text: TOOL_LOOP_BREAKER_MESSAGE };
+    const lastContent = Array.isArray(outbound.contents) ? outbound.contents.at(-1) : null;
+    if (lastContent?.role === "user" && Array.isArray(lastContent.parts)) {
+      lastContent.parts.push(nudge);
+    } else {
+      outbound.contents ??= [];
+      outbound.contents.push({ role: "user", parts: [nudge] });
+    }
+    log?.warn?.(
+      "TOOL_LOOP",
+      `removed tool declarations after ${TOOL_LOOP_BREAKER_THRESHOLD} identical consecutive calls`
+    );
   }
 
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).

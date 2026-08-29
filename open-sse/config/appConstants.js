@@ -73,6 +73,14 @@ export const CLIENT_METADATA = {
 // Internal anti-loop header
 export const INTERNAL_REQUEST_HEADER = { name: "x-request-source", value: "local" };
 
+// Stop provider-side tool loops after the same semantic call has been made
+// this many consecutive times. Tool call ids and JSON object key order are
+// intentionally ignored by the detector.
+export const TOOL_LOOP_BREAKER_THRESHOLD = 3;
+export const TOOL_LOOP_BREAKER_MESSAGE =
+  "Tool loop circuit breaker: do not emit another functionCall. " +
+  "Use the tool results already present in the conversation and respond with a final text answer now.";
+
 // Suffix added to client tools when forwarding to Antigravity provider (anti-ban cloaking)
 export const AG_TOOL_SUFFIX = "_ide";
 
