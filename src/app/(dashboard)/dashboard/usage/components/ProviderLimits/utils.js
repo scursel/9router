@@ -311,6 +311,28 @@ export function getRemainingPercentage(quota) {
   return calculatePercentage(quota?.used, quota?.total);
 }
 
+/**
+ * Render a quota row's used/total pair. Balance-style quotas carry money, not
+ * request counts: the collectors mark them by suffixing the quota name with the
+ * ISO currency in parentheses.
+ * @param {Object} quota - Normalized quota object
+ * @returns {string} Display string
+ */
+export function formatQuotaUsage(quota) {
+  const currency = String(quota?.name || "").match(/\(([A-Z]{3})\)/)?.[1] || null;
+  const amount = (value) => {
+    const number = Number(value) || 0;
+    return currency
+      ? number.toLocaleString("pt-BR", { style: "currency", currency })
+      : number.toLocaleString();
+  };
+
+  if (quota?.unlimited === true) return `${amount(quota.used)} used · Unlimited`;
+
+  const total = Number(quota?.total) || 0;
+  return `${amount(quota?.used)} / ${total > 0 ? amount(total) : "∞"}`;
+}
+
 export function getQuotaVisibilityKey(quota) {
   if (!quota || typeof quota !== "object") return "";
   return String(quota.modelKey || quota.name || "").trim();
