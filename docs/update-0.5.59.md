@@ -175,14 +175,42 @@ chunk intocado com `immutable`; sha256 do chunk servido igual ao do disco;
 dashboard de providers renderiza 40 providers, com `Alibaba Token Plan`, sem
 `Invalid provider`; `/dashboard/quota` carrega sem erro de página.
 
-## Corte do serviço (pendente)
+## Corte do serviço (executado em 2026-08-29 13:51 UTC)
 
-1. Backup do banco e do estado (`~/.9router/db/backups/pre-cutover-0.5.55-to-0.5.59-*`).
-2. Instalar `/tmp/9router-0.5.59-enhanced.tgz` no lugar do pacote atual.
-3. `./install.sh` (aplica quota + CORS e instala os patchers novos).
-4. Ordem obrigatória de patch: quota tracker → CORS → NVIDIA EOL → WAN.
-   O launcher já faz essa sequência a cada start.
-5. Conferir `--check` de cada patcher, `/api/health` e o dashboard com refresh forçado.
+Backup em `~/.9router/db/backups/pre-cutover-0.5.55-to-0.5.59-20260829-135109`:
+banco (`data.sqlite`, 32 MB), os quatro patchers e o launcher da 0.5.55, o
+pacote 0.5.55 completo (`9router-package-0.5.55-enhanced.tgz`) e o tarball
+0.5.59 instalado. O rollback é `npm install -g` do pacote 0.5.55 arquivado.
+
+Sequência: `systemctl --user stop` → backup → `npm install -g
+/tmp/9router-0.5.59-enhanced.tgz` → `./install.sh`. O launcher registrou o
+backup automático de troca de versão, aplicou quota tracker (`already applied`),
+CORS (`no-op`), NVIDIA EOL (`8 alvos`) e WAN (`applied`), nessa ordem, e o
+health check de startup passou. O `postinstall` do npm foi bloqueado pela
+política de scripts; é apenas warm-up do SQLite em `~/.9router/runtime` e o
+`cli.js` refaz em runtime.
+
+Estado verificado depois do corte:
+
+```text
+versão instalada          0.5.59
+quota tracker             enhanced-0.5.59, usagePatched, 20/20
+cors-preflight            applied
+nvidia-eol                applied, 8 alvos
+wan-image                 applied
+/api/health               {"ok":true}
+OPTIONS /v1/chat/...      204 + cabeçalhos CORS
+GET /v1/models            200, 529 modelos, combos preservados
+launcher                  quota-tracker-version=0.5.59, status=patched, sem quarentena
+```
+
+Catálogo ao vivo: o provider `nvidia` não lista mais `z-ai/glm-5.2` nem
+`deepseek-ai/deepseek-v4-pro` (os aliases desses modelos em outros providers
+continuam intactos, por desenho); os modelos novos do oficial aparecem
+(`glm-5.3-flash`, `deepseek-v4-flash-vision-exp`, `grok-4.5`, `grok-4.6`).
+Os chunks do dashboard tocados pelo overlay são servidos com
+`max-age=0, must-revalidate` e sha256 igual ao disco; os intocados seguem
+`immutable`.
 
 ## Comandos de verificação executados
 
