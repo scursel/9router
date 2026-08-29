@@ -113,6 +113,73 @@ async function getGeminiSubscriptionInfo(accessToken, proxyOptions = null) {
   }
 }
 
+const ANTIGRAVITY_QUOTA_MODELS = new Set([
+  "gemini-3.7-flash-high",
+  "gemini-3.7-flash-medium",
+  "gemini-3.7-flash-low",
+  "gemini-3.7-flash-tiered",
+  "gemini-3.6-flash-high",
+  "gemini-3.6-flash-medium",
+  "gemini-3.6-flash-low",
+  "gemini-3.6-flash-tiered",
+  "gemini-3.5-flash-high",
+  "gemini-3.5-flash-low",
+  "gemini-3.5-flash-extra-low",
+  "gemini-3-flash-agent",
+  "gemini-3-flash",
+  "gemini-pro-agent",
+  "gemini-3.1-pro-low",
+  "gemini-3.1-flash-image",
+  "gemini-3.1-flash-lite",
+  "claude-sonnet-4-6",
+  "claude-opus-4-6-thinking",
+  "gpt-oss-120b-medium",
+]);
+
+// Keep the official fetch/auth flow and only broaden its model selection.
+// The API's agentModelSorts is the authoritative recommended-model list and
+// deprecatedModelIds lets us suppress aliases once their replacement exists.
+export function parseAntigravityQuotaModels(data) {
+  const models = data?.models;
+  if (!models || typeof models !== "object") return {};
+
+  const recommended = new Set();
+  for (const sort of Array.isArray(data.agentModelSorts) ? data.agentModelSorts : []) {
+    for (const group of Array.isArray(sort?.groups) ? sort.groups : []) {
+      for (const modelId of Array.isArray(group?.modelIds) ? group.modelIds : []) {
+        if (modelId) recommended.add(String(modelId));
+      }
+    }
+  }
+
+  const deprecated = data.deprecatedModelIds || {};
+  const quotas = {};
+  for (const [modelKey, info] of Object.entries(models)) {
+    if (!info?.quotaInfo || info.isInternal) continue;
+    if (/^(tab_|chat_\d+$)/.test(modelKey)) continue;
+    if (!ANTIGRAVITY_QUOTA_MODELS.has(modelKey) && !recommended.has(modelKey)) continue;
+    const replacement = deprecated[modelKey]?.newModelId;
+    if (replacement && models[replacement]) continue;
+
+    // proto3 omits numeric zero. Treat an absent remainingFraction as exhausted.
+    const rawFraction = Number(info.quotaInfo.remainingFraction);
+    const remainingFraction = Number.isFinite(rawFraction)
+      ? Math.min(1, Math.max(0, rawFraction))
+      : 0;
+    const total = 1000;
+    const remaining = Math.round(total * remainingFraction);
+    quotas[modelKey] = {
+      used: total - remaining,
+      total,
+      resetAt: parseResetTime(info.quotaInfo.resetTime),
+      remainingPercentage: remainingFraction * 100,
+      unlimited: false,
+      displayName: info.displayName || modelKey,
+    };
+  }
+  return quotas;
+}
+
 /**
  * Antigravity Usage - Fetch quota from Google Cloud Code API
  */
@@ -155,62 +222,10 @@ export async function getAntigravityUsage(accessToken, providerSpecificData, pro
     }
 
     const data = await response.json();
-    const quotas = {};
-
-    // Parse model quotas (inspired by vscode-antigravity-cockpit)
-    if (data.models) {
-      // Filter only recommended/important models (must match PROVIDER_MODELS ag ids)
-      const importantModels = [
-        'gemini-3.7-flash-high',
-        'gemini-3.7-flash-medium',
-        'gemini-3.7-flash-low',
-        'gemini-3.6-flash-high',
-        'gemini-3.6-flash-medium',
-        'gemini-3.6-flash-low',
-        'gemini-3.5-flash-low',
-        'gemini-3.5-flash-extra-low',
-        'gemini-pro-agent',
-        'gemini-3.1-pro-low',
-        'claude-sonnet-4-6',
-        'claude-opus-4-6-thinking',
-        'gpt-oss-120b-medium',
-        // Image generation models
-        'gemini-3.1-flash-image',
-      ];
-
-      for (const [modelKey, info] of Object.entries(data.models)) {
-        // Skip models without quota info
-        if (!info.quotaInfo) {
-          continue;
-        }
-
-        // Skip internal models and non-important models
-        if (info.isInternal || !importantModels.includes(modelKey)) {
-          continue;
-        }
-
-        const remainingFraction = info.quotaInfo.remainingFraction || 0;
-        const remainingPercentage = remainingFraction * 100;
-
-        // Convert percentage to used/total for UI compatibility
-        const total = 1000; // Normalized base
-        const remaining = Math.round(total * remainingFraction);
-        const used = total - remaining;
-
-        // Use modelKey as key (matches PROVIDER_MODELS id)
-        quotas[modelKey] = {
-          used,
-          total,
-          resetAt: parseResetTime(info.quotaInfo.resetTime),
-          remainingPercentage,
-          unlimited: false,
-          displayName: info.displayName || modelKey,
-        };
-      }
-    }
+    const quotas = parseAntigravityQuotaModels(data);
 
     return {
-      plan: subscriptionInfo?.currentTier?.name || "Unknown",
+      plan: subscriptionInfo?.paidTier?.name || subscriptionInfo?.currentTier?.name || "Unknown",
       quotas,
       subscriptionInfo,
     };
