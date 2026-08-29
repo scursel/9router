@@ -23,28 +23,26 @@ function startBackgroundTokenRefreshFromCustomServer() {
   const modPath = path.join(__dirname, "src", "sse", "services", "backgroundTokenRefresh.js");
   import(pathToFileURL(modPath).href)
     .then((m) => {
-      try {
+      if (m && typeof m.startBackgroundTokenRefresh === "function") {
         m.startBackgroundTokenRefresh();
-      } catch (e) {
-        console.error("[BackgroundTokenRefresh] start failed:", e && e.message ? e.message : e);
       }
-      const stop = () => {
-        try {
-          m.stopBackgroundTokenRefresh();
-        } catch {
-          /* ignore */
-        }
-      };
-      process.once("SIGINT", stop);
-      process.once("SIGTERM", stop);
     })
     .catch((e) => {
-      // Expected in published CLI standalone (src/ not on disk). App bootstrap covers it.
-      if (process.env.DEBUG_BACKGROUND_TOKEN_REFRESH) {
-        console.error("[BackgroundTokenRefresh] import failed:", e && e.message ? e.message : e);
-      }
+      console.warn("Custom server failed to import backgroundTokenRefresh:", e && e.message ? e.message : e);
     });
 }
+
+// CORS headers injected on every response — allows browser/Electron clients
+// on any origin (Tailscale, local network, etc.) to call the OpenAI-compatible
+// API without being blocked by same-origin policy.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE, PATCH",
+  "Access-Control-Allow-Headers":
+    "Authorization, Content-Type, x-api-key, x-goog-api-key, Origin, Accept, Cache-Control",
+  "Access-Control-Max-Age": "86400",
+};
+
 
 // Wrap Next standalone HTTP server: derive client IP from the TCP socket
 // (unspoofable) and strip client-supplied forwarding headers so downstream
@@ -70,6 +68,38 @@ http.createServer = (...args) => {
     req.headers["x-9r-real-ip"] = ip;
     req.headers["x-9r-peer-token"] = PEER_TOKEN;
     if (viaProxy) req.headers["x-9r-via-proxy"] = "1";
+
+    // ── CORS preflight ────────────────────────────────────────────────
+    // Browsers send OPTIONS *before* the real request, and never include
+    // Authorization on preflight. Respond 204 immediately so the actual
+    // POST/DELETE/etc. can proceed with the API key.
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, CORS_HEADERS);
+      res.end();
+      return;
+    }
+
+    // ── Inject CORS on every response ─────────────────────────────────
+    // Wrap writeHead so all downstream responses (including 401/403 from the
+    // auth middleware) carry CORS headers; otherwise the browser surfaces a
+    // genuine auth failure as an opaque network error.
+    const origWriteHead = res.writeHead.bind(res);
+    res.writeHead = (statusCode, ...restArgs) => {
+      let headers;
+      if (restArgs.length && typeof restArgs[restArgs.length - 1] === "object" && !Array.isArray(restArgs[restArgs.length - 1])) {
+        headers = restArgs[restArgs.length - 1];
+        Object.assign(headers, CORS_HEADERS);
+      } else if (restArgs.length && typeof restArgs[0] === "object" && !Array.isArray(restArgs[0])) {
+        headers = restArgs[0];
+        Object.assign(headers, CORS_HEADERS);
+      } else {
+        headers = Object.assign({}, CORS_HEADERS);
+        restArgs.push(headers);
+      }
+
+      return origWriteHead(statusCode, ...restArgs);
+    };
+
     return handler(req, res);
   };
   const server = origCreate(...rest, wrapped);
@@ -123,6 +153,10 @@ http.createServer = (...args) => {
     return true;
   };
   return server;
+};
+
+module.exports = {
+  CORS_HEADERS,
 };
 
 if (require.main === module) {
