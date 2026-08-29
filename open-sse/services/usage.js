@@ -24,6 +24,12 @@ import {
   getVercelAiGatewayUsage,
   getQoderUsage,
 } from "./usage/misc.js";
+import { getOpenRouterUsage } from "./usage/openrouter.js";
+import { getCommandCodeUsage } from "./usage/commandcode.js";
+import { getXiaomiMimoUsage } from "./usage/xiaomiMimo.js";
+import { getClinePassUsage } from "./usage/clinepass.js";
+import { getOpencodeGoUsage } from "./usage/opencodeGo.js";
+import { getAlibabaTokenPlanUsage } from "./usage/alibabaTokenPlan.js";
 
 /**
  * Get usage data for a provider connection
@@ -58,9 +64,20 @@ const USAGE_HANDLERS = {
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
   groq: (c) => getGroqUsage(c.apiKey, c.proxyOptions),
   zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  openrouter: (c) => getOpenRouterUsage(c.apiKey, c.proxyOptions),
+  commandcode: (c) => getCommandCodeUsage(c.apiKey, c.proxyOptions),
+  "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.providerSpecificData, c.proxyOptions),
+  clinepass: (c) => getClinePassUsage(c.apiKey || c.accessToken, c.proxyOptions),
+  "opencode-go": (c) => getOpencodeGoUsage(c.apiKey, c.proxyOptions),
+  // Official alitp-intl ships connection and transport but no usage API, so the
+  // 5h/7d windows are metered locally from usageHistory.
+  "alitp-intl": (c) => getAlibabaTokenPlanUsage(c),
+  "qwen-cloud-token-plan": (c) => getAlibabaTokenPlanUsage(c),
 };
 
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {
+  // connectionId originates from database record (connection.id or connection.connectionId)
+  const connectionId = String(connection.connectionId || connection.id || "").trim();
   const { provider, accessToken, apiKey, providerSpecificData, projectId } = connection;
   const providerDataWithProjectId = {
     ...(providerSpecificData || {}),
@@ -70,6 +87,8 @@ export async function getUsageForProvider(connection, proxyOptions = null, optio
   const handler = USAGE_HANDLERS[provider];
   if (!handler) return { message: `Usage API not implemented for ${provider}` };
   return await handler({
+    id: connectionId,
+    connectionId,
     provider,
     accessToken,
     apiKey,

@@ -168,8 +168,12 @@ export async function GET(request, { params }) {
       }
     }
 
-    // Fetch usage from provider API
-    let usage = await getUsageForProvider(connection, proxyOptions, { force });
+    // Fetch usage from provider API (connection.id originates from DB connection record / route params)
+    let usage = await getUsageForProvider(
+      { ...connection, id: connection.id || connectionId },
+      proxyOptions,
+      { force },
+    );
 
     // If provider returned an auth-expired message instead of throwing,
     // force-refresh token and retry once (OAuth only)
@@ -177,7 +181,11 @@ export async function GET(request, { params }) {
       try {
         const retryResult = await refreshAndUpdateCredentials(connection, true, proxyOptions);
         connection = retryResult.connection;
-        usage = await getUsageForProvider(connection, proxyOptions, { force });
+        usage = await getUsageForProvider(
+          { ...connection, id: connection.id || connectionId },
+          proxyOptions,
+          { force },
+        );
       } catch (retryError) {
         console.warn(`[Usage] ${connection.provider}: force refresh failed: ${retryError.message}`);
       }
