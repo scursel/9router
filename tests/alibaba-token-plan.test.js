@@ -134,6 +134,129 @@ console.log("Running Alibaba Token Plan local sliding-window quota meter tests..
   assert.equal(quota7d.unlimited, false);
 }
 
+// 3b. Credit estimate from qwen3.8 usage + Token Plan Standard windows
+{
+  const now = Date.parse("2026-08-15T13:00:00.000Z");
+  const records = [
+    {
+      timestamp: new Date(now - 1800 * 1000).toISOString(),
+      promptTokens: 47377,
+      completionTokens: 120,
+      tokens: JSON.stringify({
+        prompt_tokens: 47377,
+        completion_tokens: 120,
+        cached_tokens: 44288,
+      }),
+    },
+  ];
+  const res = qtpCalcSlidingWindowUsage(records, now, { unit: "credits" });
+  const quota5h = res.quotas["Créditos 5h (estimado)"];
+  const quota7d = res.quotas["Créditos 7d (estimado)"];
+  const uncached = 47377 - 44288;
+  const usd = uncached * 2e-6 + 120 * 6e-6 + 44288 * 0.25e-6;
+  const credits = usd / 0.002;
+  assert.ok(Math.abs(quota5h.used - credits) < 1e-9);
+  assert.equal(quota5h.total, 700);
+  assert.equal(quota5h.unlimited, false);
+  assert.ok(quota5h.remainingPercentage > 80);
+  assert.ok(quota7d);
+  assert.ok(Math.abs(quota7d.used - credits) < 1e-9);
+  assert.equal(quota7d.total, 2500);
+  assert.ok(quota7d.remainingPercentage > 90);
+}
+
+// 3c. 5h can be exhausted while the weekly bar still has remaining.
+{
+  const now = Date.parse("2026-08-15T16:00:00.000Z");
+  const records = [
+    {
+      timestamp: new Date(now - 1800 * 1000).toISOString(),
+      tokens: JSON.stringify({
+        prompt_tokens: 800000,
+        completion_tokens: 0,
+        cached_tokens: 0,
+      }),
+    },
+  ];
+  const res = qtpCalcSlidingWindowUsage(records, now, { unit: "credits" });
+  const quota5h = res.quotas["Créditos 5h (estimado)"];
+  const quota7d = res.quotas["Créditos 7d (estimado)"];
+  assert.ok(Math.abs(quota5h.used - 800) < 1e-9);
+  assert.equal(quota5h.total, 700);
+  assert.equal(quota5h.remainingPercentage, 0);
+  assert.ok(Math.abs(quota7d.used - 800) < 1e-9);
+  assert.equal(quota7d.total, 2500);
+  assert.equal(quota7d.remainingPercentage, 68);
+}
+
+// 3e. Official weekly usage the router never saw is added only to the 7d bar.
+{
+  const now = Date.parse("2026-08-15T16:00:00.000Z");
+  const windowStart = now - 20 * 3600 * 1000;
+  const records = [
+    {
+      timestamp: new Date(windowStart).toISOString(),
+      tokens: JSON.stringify({
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        cached_tokens: 0,
+      }),
+    },
+    {
+      timestamp: new Date(now - 1800 * 1000).toISOString(),
+      tokens: JSON.stringify({
+        prompt_tokens: 800000,
+        completion_tokens: 0,
+        cached_tokens: 0,
+      }),
+    },
+  ];
+  const matched = qtpCalcSlidingWindowUsage(records, now, {
+    unit: "credits",
+    untrackedCredits7d: 1525,
+    untrackedCredits7dWindowStart: windowStart,
+  });
+  assert.ok(Math.abs(matched.quotas["Créditos 5h (estimado)"].used - 800) < 1e-9);
+  assert.equal(matched.quotas["Créditos 5h (estimado)"].remainingPercentage, 0);
+  assert.ok(Math.abs(matched.quotas["Créditos 7d (estimado)"].used - 2325) < 1e-9);
+  assert.ok(Math.abs(matched.quotas["Créditos 7d (estimado)"].remainingPercentage - 7) < 1e-9);
+
+  const stale = qtpCalcSlidingWindowUsage(records, now, {
+    unit: "credits",
+    untrackedCredits7d: 1525,
+    untrackedCredits7dWindowStart: windowStart - 7 * 86400 * 1000,
+  });
+  assert.ok(Math.abs(stale.quotas["Créditos 7d (estimado)"].used - 800) < 1e-9);
+  assert.equal(stale.quotas["Créditos 7d (estimado)"].remainingPercentage, 68);
+}
+
+// 3d. 5h window starts at first call, not a sliding last-5h clock.
+{
+  const now = Date.parse("2026-08-15T18:00:00.000Z");
+  const tokens = JSON.stringify({
+    prompt_tokens: 10000,
+    completion_tokens: 0,
+    cached_tokens: 0,
+  });
+  const res = qtpCalcSlidingWindowUsage(
+    [
+      { timestamp: now - 6 * 3600 * 1000, model: "qwen3.8-max-preview", tokens },
+      { timestamp: now - 1 * 3600 * 1000, model: "qwen3.8-max-preview", tokens },
+    ],
+    now,
+    { unit: "credits" },
+  );
+  const one = qtpCalcSlidingWindowUsage(
+    [{ timestamp: now - 1 * 3600 * 1000, model: "qwen3.8-max-preview", tokens }],
+    now,
+    { unit: "credits" },
+  );
+  assert.equal(
+    res.quotas["Créditos 5h (estimado)"].used,
+    one.quotas["Créditos 5h (estimado)"].used,
+  );
+}
+
 async function runAsyncTests() {
   // 4. Test qtpAlibaba async dispatcher (handles missing/empty DB gracefully)
   {
@@ -144,10 +267,11 @@ async function runAsyncTests() {
 
     assert.equal(res.status, "ok");
     assert.equal(res.source, "router-local");
-    assert.equal(res.plan, "Alibaba Token Plan (medido pelo router)");
+    assert.equal(res.plan, "Alibaba Token Plan Lite (créditos estimados)");
     assert.equal(res.fetchedAt, "2026-08-07T12:00:00.000Z");
-    assert.ok("Consumo 5h (medido local)" in res.quotas);
-    assert.ok("Consumo 7d (medido local)" in res.quotas);
+    assert.ok("Créditos 5h (estimado)" in res.quotas);
+    assert.ok("Créditos 7d (estimado)" in res.quotas);
+    assert.equal(res.quotas["Créditos 7d (estimado)"].total, 2500);
   }
 
   // 5. Test qtpAlibaba with mock db attached to global._dbAdapter
@@ -180,10 +304,11 @@ async function runAsyncTests() {
         now,
       );
 
-      assert.equal(res.quotas["Consumo 5h (medido local)"].used, 300);
-      assert.equal(res.quotas["Consumo 5h (medido local)"].total, 10000);
-      assert.equal(res.quotas["Consumo 7d (medido local)"].used, 1000);
-      assert.equal(res.quotas["Consumo 7d (medido local)"].unlimited, true);
+      assert.ok(
+        Math.abs(res.quotas["Créditos 5h (estimado)"].used - (100 * 2e-6 + 200 * 6e-6) / 0.002) < 1e-9,
+      );
+      assert.equal(res.quotas["Créditos 5h (estimado)"].total, 10000);
+      assert.ok(res.quotas["Créditos 7d (estimado)"].used > res.quotas["Créditos 5h (estimado)"].used);
     } finally {
       global._dbAdapter = origDb;
     }
@@ -202,9 +327,10 @@ async function runAsyncTests() {
     const origDb = global._dbAdapter;
     global._dbAdapter = {
       instance: {
-        all(sql) {
-          assert.match(sql, /alitp-intl/);
-          assert.match(sql, /qwen-cloud-token-plan/);
+        all(sql, params) {
+          assert.match(sql, /connectionId = \?/);
+          assert.equal(sql.includes("OR connectionId"), false);
+          assert.equal(params[0], "conn-scursel");
           return [
             {
               promptTokens: 40,
@@ -216,9 +342,51 @@ async function runAsyncTests() {
       },
     };
     try {
-      const res = await qtpAlibaba({ provider: "alitp-intl" }, now);
-      assert.equal(res.quotas["Consumo 5h (medido local)"].used, 50);
+      const res = await qtpAlibaba(
+        { provider: "alitp-intl", connectionId: "conn-scursel" },
+        now,
+      );
+      assert.equal(res.quotas["Créditos 5h (estimado)"].used, (40 * 2e-6 + 10 * 6e-6) / 0.002);
       assert.equal(res.source, "router-local");
+      assert.ok("Créditos 7d (estimado)" in res.quotas);
+    } finally {
+      global._dbAdapter = origDb;
+    }
+  }
+
+  // 5c. Resolve connection from apiKey and never mix two alitp accounts.
+  {
+    const now = Date.parse("2026-08-07T12:00:00.000Z");
+    const origDb = global._dbAdapter;
+    const seen = [];
+    global._dbAdapter = {
+      instance: {
+        get(sql, params) {
+          assert.match(sql, /json_extract/);
+          assert.equal(params[0], "sk-lite-scursel");
+          return { id: "conn-scursel" };
+        },
+        all(sql, params) {
+          seen.push({ sql, params });
+          assert.match(sql, /connectionId = \?/);
+          assert.equal(params[0], "conn-scursel");
+          return [
+            {
+              promptTokens: 10,
+              completionTokens: 5,
+              timestamp: new Date(now - 600 * 1000).toISOString(),
+            },
+          ];
+        },
+      },
+    };
+    try {
+      const res = await qtpAlibaba(
+        { provider: "alitp-intl", apiKey: "sk-lite-scursel" },
+        now,
+      );
+      assert.equal(seen.length, 1);
+      assert.ok(res.quotas["Créditos 5h (estimado)"].used > 0);
     } finally {
       global._dbAdapter = origDb;
     }
@@ -264,7 +432,7 @@ async function runAsyncTests() {
     global._dbAdapter = undefined;
     try {
       const res = await isolated({ connectionId: "conn-usage-chunk" }, now);
-      assert.equal(res.quotas["Consumo 5h (medido local)"].used, 100);
+      assert.equal(res.quotas["Créditos 5h (estimado)"].used, (80 * 2e-6 + 20 * 6e-6) / 0.002);
       assert.equal(res.source, "router-local");
     } finally {
       global._dbAdapter = previousAdapter;

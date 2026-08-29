@@ -59,12 +59,45 @@ const commandCode = qtpParseCommandCode({
 assert.equal(commandCode.plan, "Pro");
 assert.equal(
   commandCode.quotas["Monthly credits (USD) - renews 25/07/2026"].total,
-  0.0745,
+  80,
+);
+assert.equal(
+  commandCode.quotas["Monthly credits (USD) - renews 25/07/2026"].used,
+  79.9255,
 );
 assert.equal(
   commandCode.quotas["Monthly credits (USD) - renews 25/07/2026"].resetAt,
   "2026-07-25T13:02:09.000Z",
 );
+
+const goat = qtpParseCommandCode({
+  credits: { monthlyCredits: 55.9800285648, purchasedCredits: 0, freeCredits: 0 },
+  windowLimits: { limited: true },
+}, {
+  success: true,
+  data: { planId: "individual-goat", currentPeriodEnd: "2026-09-11T18:16:13.000Z" },
+});
+assert.equal(goat.plan, "Goat");
+assert.equal(goat.quotas["Monthly credits (USD) - renews 11/09/2026"].total, 70);
+assert.equal(
+  goat.quotas["Monthly credits (USD) - renews 11/09/2026"].used,
+  70 - 55.9800285648,
+);
+
+const depleted = qtpParseCommandCode({
+  credits: { monthlyCredits: 0 },
+  windowLimits: {},
+}, { data: { planId: "individual-goat" } });
+assert.equal(depleted.quotas["Monthly credits (USD)"].used, 70);
+assert.equal(depleted.quotas["Monthly credits (USD)"].total, 70);
+assert.equal(depleted.quotas["Monthly credits (USD)"].remainingPercentage, 0);
+
+const unknownPlan = qtpParseCommandCode({
+  credits: { monthlyCredits: 5 },
+  windowLimits: {},
+}, { data: { planId: "mystery-plan" } });
+assert.equal(unknownPlan.quotas["Monthly credits (USD)"].used, 0);
+assert.equal(unknownPlan.quotas["Monthly credits (USD)"].total, 5);
 assert.equal(commandCode.quotas["5 hour window (USD)"].total, 9);
 assert.equal(commandCode.quotas["7 day window (USD)"].used, 1.6686);
 assert.equal(

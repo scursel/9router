@@ -27,8 +27,10 @@ const UI_RELATIVES = new Set([
   "../static/chunks/app/(dashboard)/dashboard/quota/page-d9d1141b54f2eedd.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-b571eafb19552ce1.js",
   "../static/chunks/app/(dashboard)/dashboard/quota/page-b230ee0b12eb9318.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-69f67dfea276e5ad.js",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-f8f2554003335349.js",
 ]);
-const SUPPORTED_VERSIONS = new Set(["0.5.35", "0.5.40", "0.5.45", "0.5.50", "0.5.55"]);
+const SUPPORTED_VERSIONS = new Set(["0.5.35", "0.5.40", "0.5.45", "0.5.50", "0.5.55", "0.5.59"]);
 const UPSTREAM_CATALOG_HASHES = {
   "app/api/models/route.js": "7e150ccf2352d9457a204e87c89065a8ad81c9a3bdae1647ef6dbfab1efd9fc7",
   "app/api/provider-nodes/route.js": "a6f1767762b0b03f3a43b38c04eb9ab11fa60bf62fe9a5ac0be3b7cf8a36e1a2",
@@ -285,8 +287,62 @@ const ENHANCED_0555_CATALOG_HASHES = {
   "chunks/869.js": "052d4e6272bbc62e96214c47738d747ddedb6186193f183ada7405fca2a8289f",
   "chunks/8847.js": "f9adaa3f82941e633ad42de262010ac79a2bfa62b14b3b111a61fde58ea43a71",
 };
+const OFFICIAL_0559_CATALOG_HASHES = {
+  "../static/chunks/1321-2a57edbbd554a357.js": "64a40d64cdef8e4e0ffb05cb20b5cfe2b037de48890e6b44a7bc95ce69bcf55e",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-69f67dfea276e5ad.js": "34893744fba400d01429e2837a4641b1daf15e7fbe668d19663097908ba8d12a",
+  "app/(dashboard)/dashboard/quota/page.js": "cd3b420b778bed6cf79fb935a47c2535f399307ea84dbf9afa5e54bcfe964e3f",
+  "app/api/provider-nodes/route.js": "e90595fdf4c28925202b205733fbf8eb8b5b7801a828ca6858e9fa6d7059cd7d",
+  "app/api/providers/client/route.js": "81f21d0be5bb7eb605d8d2741aa252597abfd5e8ef6eb1e71388f84530e7f0ac",
+  "app/api/providers/validate/route.js": "5a422a299e4720832cc196eb90042f3e6f717e07eadda09bee92b3909bc2e099",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "3369b33c04f392eb63aa9305c48048dda6fe765ac01b2f0d6249fd17183b3058",
+  "app/api/usage/[connectionId]/route.js": "876e5a5e9b2a4b5fb28e8def8c4dc7f99bbfe6a0187bdfe952d9a30eb36d2a1c",
+  "app/api/usage/providers/route.js": "6a6e45508eede8568b91a62acc3b899486ec08d9dd78d2ace3e51ec3d23f89b8",
+  "app/api/v1/audio/voices/route.js": "c3170c45429d3d6fcc2dea204c8f537d07e30dfe55e9e308bef64e5fbaa300d4",
+  "app/api/v1/models/info/route.js": "1a87998071eea9180dbe7c1b6700d9a748244cf74dae857a0bfa36d06c268d18",
+  "app/api/v1beta/models/route.js": "8240a9b4f6b4c0c53ba98c38ac05f345833aef1e022f5fc82a49c031bb866a1a",
+  "chunks/3753.js": "cdca68034e306d4b5895731097b6220e6ebec62d31061ead65175a057d42c313",
+  "chunks/7011.js": "6b4ea947f864e4f624464d75ab047748e30fb08df099bd0bba9f3e353fa93fe1",
+  "chunks/8236.js": "e2e496d0254b3ba3a98e7fe7f97e63a4c4e5464dfc7f42054e289c3d5f922b03",
+  "chunks/615.js": "65c3b75695dfad1575e93939b619bd8385ec29cffbcbd4fa4a1e96595c6628ee",
+  "chunks/7211.js": "75760ed2bf5462a95ff191fbd2def926738d794ffe9fe4f028e2f7d5ecf764a4",
+  "chunks/827.js": "42eccc69090682aff78b48a5935d1e177f57af56d330f10a15611d216ee96ebd",
+  "chunks/869.js": "27d22664c93d9785c941caaffc87c75c7b181ae52dac262f50522e0ae1f38d36",
+  "chunks/8847.js": "13f11630d4a54b08235e5e04fd37a8d2c363f3890e340e9da1e0fc28f40d3db8",
+};
+const ENHANCED_0559_CATALOG_HASHES = {
+  "../static/chunks/1321-2a57edbbd554a357.js": "64a40d64cdef8e4e0ffb05cb20b5cfe2b037de48890e6b44a7bc95ce69bcf55e",
+  "../static/chunks/app/(dashboard)/dashboard/quota/page-f8f2554003335349.js": "2f512ff2a763ea575f90cf83c6799d7b3e9ca407c89616f6242bd06d6d4b1282",
+  "app/(dashboard)/dashboard/quota/page.js": "f35c31ffa76c6306c8cff1e9dafffef8f9b901d9c755ecefb3df0d23d6565bd6",
+  "app/api/provider-nodes/route.js": "33546ecd45cc598f9c29cbc750a0e7f10f4aea8a1fa694d605e0830b02de95ac",
+  "app/api/providers/client/route.js": "6e9938201138e43f0341da499713cbcc8777f09729e70ffcc0b50880801be953",
+  "app/api/providers/validate/route.js": "b4a7a57146540b1ff11278a09cf952f3b71948980d5eee410903184a98bcb016",
+  "app/api/usage/[connectionId]/codex-reset-credits/route.js": "a0a6d375d26f4f57ae98bea81052fb6831a4d34c609606da002ec1090c6825d9",
+  "app/api/usage/[connectionId]/route.js": "ea5efafa092d076efb2530d74949869acb5234629783819f66e092f3f565de8e",
+  "app/api/usage/providers/route.js": "f78569e5ec888c78247521d51c0bdc9c2976321a44277a47faa2ada017210940",
+  "app/api/v1/audio/voices/route.js": "515e09a5df9ea4092b1ccdd0ba6775988fa1541ab12ea2d5cbff45201c74bcd0",
+  "app/api/v1/models/info/route.js": "e7482ffcc325dcc573b0168c427f9d58e2d5822dc85955fdf902d7405e1f984d",
+  "app/api/v1beta/models/route.js": "2af5299601944af73042895f72ece760252ee9418d29339c5b0d1443dcd4fbd3",
+  "chunks/3257.js": "add6e7ddad70fcb901fc50e1f949e8dad948174bbf965fefe7a33120c34861ac",
+  "chunks/3753.js": "cdca68034e306d4b5895731097b6220e6ebec62d31061ead65175a057d42c313",
+  "chunks/8236.js": "e2e496d0254b3ba3a98e7fe7f97e63a4c4e5464dfc7f42054e289c3d5f922b03",
+  "chunks/615.js": "65c3b75695dfad1575e93939b619bd8385ec29cffbcbd4fa4a1e96595c6628ee",
+  "chunks/7211.js": "331e44760833f25040ecc585117f3132cfd21bc0e7911002f2ef89e9c83d9030",
+  "chunks/827.js": "42eccc69090682aff78b48a5935d1e177f57af56d330f10a15611d216ee96ebd",
+  "chunks/869.js": "27d22664c93d9785c941caaffc87c75c7b181ae52dac262f50522e0ae1f38d36",
+  "chunks/8847.js": "0c47f8e9f82e67f4eb191c85b4851866e0ff8113ddb340b253100524c56fd928",
+};
 // Fingerprint files are unique per official/enhanced build of each release.
 const CATALOG_VARIANTS = [
+  {
+    name: "enhanced-0.5.59",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-f8f2554003335349.js",
+    hashes: ENHANCED_0559_CATALOG_HASHES,
+  },
+  {
+    name: "official-0.5.59",
+    fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-69f67dfea276e5ad.js",
+    hashes: OFFICIAL_0559_CATALOG_HASHES,
+  },
   {
     name: "enhanced-0.5.55",
     fingerprint: "../static/chunks/app/(dashboard)/dashboard/quota/page-b230ee0b12eb9318.js",
@@ -377,12 +433,17 @@ const OPENCODE_GO_CATALOG_RELATIVES = new Set([
   "chunks/4953.js",
   "chunks/5285.js",
   "chunks/7011.js",
+  "chunks/3257.js",
+  "chunks/3753.js",
+  "chunks/8236.js",
 ]);
 const OPENCODE_GO_RUNTIME_RELATIVES = new Set(["chunks/318.js"]);
 const OPENCODE_GO_DIRECT_RELATIVES = new Set([
   "chunks/4963.js",
   "chunks/318.js",
   "chunks/4953.js",
+  "chunks/3753.js",
+  "chunks/8236.js",
 ]);
 const LEGACY_MARKERS = [
   "/* QuotaTrackerPatch:v2 */",
@@ -691,6 +752,23 @@ function qtpBalance(amount, resetAt = null) {
   };
 }
 
+// credits.monthlyCredits is remaining, not the plan grant. Totals come from
+// https://commandcode.ai/docs/resources/pricing-limits keyed by planId.
+function qtpCommandCodeMonthlyTotal(planId) {
+  const totals = {
+    "individual-go": 10,
+    "individual-goat": 70,
+    "individual-pro": 80,
+    "individual-max": 150,
+    "individual-max-10x": 150,
+    "individual-ultra": 300,
+    "individual-max-20x": 300,
+    "teams-pro": 40,
+    "team-pro": 40,
+  };
+  return qtpNum(totals[String(planId || "").toLowerCase()], 0);
+}
+
 function qtpParseOpenRouter(body) {
   const data = body && typeof body.data === "object" ? body.data : body;
   const total = qtpNum(data?.total_credits);
@@ -741,14 +819,17 @@ function qtpParseCommandCode(body, subscriptionBody = null) {
   const renewalAt = subscription.currentPeriodEnd || null;
   const renewalDate = qtpDate(renewalAt);
   const quotas = {};
-  const monthly = qtpNum(credits.monthlyCredits, 0);
+  const remaining = qtpNum(credits.monthlyCredits, 0);
+  const monthlyTotal = qtpCommandCodeMonthlyTotal(subscription.planId);
   const purchased = qtpNum(credits.purchasedCredits, 0);
   const free = qtpNum(credits.freeCredits, 0);
-  if (monthly > 0) {
+  if (monthlyTotal > 0 || remaining > 0) {
     const monthlyName = renewalDate
       ? `Monthly credits (USD) - renews ${renewalDate}`
       : "Monthly credits (USD)";
-    quotas[monthlyName] = qtpBalance(monthly, renewalAt);
+    quotas[monthlyName] = monthlyTotal > 0
+      ? qtpQuota(monthlyTotal - remaining, monthlyTotal, renewalAt)
+      : qtpBalance(remaining, renewalAt);
   }
   if (purchased > 0) quotas["Purchased credits (USD)"] = qtpBalance(purchased);
   if (free > 0) quotas["Free credits (USD)"] = qtpBalance(free);
@@ -910,59 +991,164 @@ function qtpLocalQuota(used, limit) {
   };
 }
 
+function qtpAlibabaPlanLimits(limits = {}) {
+  const plans = {
+    lite: { name: "Lite", limit5h: 700, limit7d: 2500 },
+    standard: { name: "Standard", limit5h: 3000, limit7d: 10000 },
+    pro: { name: "Pro", limit5h: 12000, limit7d: 40000 },
+  };
+  const key = String(limits.plan || limits.tier || limits.tokenPlan || "lite")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+  return plans[key] || plans.lite;
+}
+
+function qtpEstimateAlibabaCredits(record) {
+  let prompt = qtpNum(record?.promptTokens, 0);
+  let completion = qtpNum(record?.completionTokens, 0);
+  let cached = 0;
+  let raw = record?.tokens;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
+  if (raw && typeof raw === "object") {
+    prompt = qtpNum(raw.prompt_tokens ?? raw.promptTokens, prompt);
+    completion = qtpNum(raw.completion_tokens ?? raw.completionTokens, completion);
+    cached = qtpNum(raw.cached_tokens ?? raw.cachedTokens, 0);
+  }
+  const uncached = Math.max(0, prompt - cached);
+  // qwen3.8 list USD / 1M × ~$0.002 per Token Plan credit.
+  const usd = uncached * 2e-6 + completion * 6e-6 + cached * 0.25e-6;
+  return usd / 0.002;
+}
+
+function qtpAlibabaWindowMeta(records, windowMs, now, useCredits) {
+  const items = [];
+  if (Array.isArray(records)) {
+    for (const r of records) {
+      const t =
+        typeof r?.timestamp === "number"
+          ? r.timestamp
+          : r?.timestamp
+            ? new Date(r.timestamp).getTime()
+            : NaN;
+      if (!Number.isFinite(t) || t > now) continue;
+      const amount = useCredits
+        ? qtpEstimateAlibabaCredits(r)
+        : qtpNum(r?.promptTokens, 0) + qtpNum(r?.completionTokens, 0);
+      items.push({ t, amount });
+    }
+  }
+  items.sort((a, b) => a.t - b.t);
+  let start = null;
+  let end = null;
+  for (const item of items) {
+    if (start === null || item.t >= end) {
+      start = item.t;
+      end = item.t + windowMs;
+    }
+  }
+  if (start === null || now >= end) return { used: 0, start: null, end: null };
+  let used = 0;
+  for (const item of items) {
+    if (item.t >= start && item.t < end) used += item.amount;
+  }
+  return { used, start, end };
+}
+
+function qtpAlibabaWindowUsage(records, windowMs, now, useCredits) {
+  return qtpAlibabaWindowMeta(records, windowMs, now, useCredits).used;
+}
+
+function qtpAlibabaUntracked7d(limits, windowStart) {
+  const extra = qtpNum(limits?.untrackedCredits7d ?? limits?.quotaUsed7dOffset, 0);
+  if (extra <= 0) return 0;
+  const raw = limits?.untrackedCredits7dWindowStart ?? limits?.quotaUsed7dWindowStart;
+  if (raw == null || raw === "") return extra;
+  const hintedStart = typeof raw === "number" ? raw : new Date(raw).getTime();
+  if (!Number.isFinite(hintedStart) || !Number.isFinite(windowStart)) return 0;
+  return Math.abs(hintedStart - windowStart) < 2000 ? extra : 0;
+}
+
 function qtpCalcSlidingWindowUsage(records, now = Date.now(), limits = {}) {
   const fiveHourMs = 5 * 3600 * 1000;
   const sevenDayMs = 7 * 86400 * 1000;
   const cutoff5h = now - fiveHourMs;
   const cutoff7d = now - sevenDayMs;
-
-  let fiveHourTokens = 0;
-  let sevenDayTokens = 0;
-
-  if (Array.isArray(records)) {
-    for (const r of records) {
-      const p = qtpNum(r?.promptTokens, 0);
-      const c = qtpNum(r?.completionTokens, 0);
-      const tokens = p + c;
-      const t =
-        typeof r?.timestamp === "number"
-          ? r.timestamp
-          : r?.timestamp
-          ? new Date(r.timestamp).getTime()
-          : NaN;
-      if (!Number.isFinite(t)) continue;
-      if (t >= cutoff7d && t <= now) {
-        sevenDayTokens += tokens;
-        if (t >= cutoff5h) {
-          fiveHourTokens += tokens;
+  const useCredits = String(limits?.unit || "").toLowerCase() === "credits";
+  const plan = qtpAlibabaPlanLimits(limits);
+  const fiveHourUsed = useCredits
+    ? qtpAlibabaWindowUsage(records, fiveHourMs, now, true)
+    : (() => {
+        let used = 0;
+        if (Array.isArray(records)) {
+          for (const r of records) {
+            const t =
+              typeof r?.timestamp === "number"
+                ? r.timestamp
+                : r?.timestamp
+                  ? new Date(r.timestamp).getTime()
+                  : NaN;
+            if (!Number.isFinite(t) || t < cutoff5h || t > now) continue;
+            used += qtpNum(r?.promptTokens, 0) + qtpNum(r?.completionTokens, 0);
+          }
         }
-      }
-    }
-  }
+        return used;
+      })();
+  const sevenDayMeta = useCredits
+    ? qtpAlibabaWindowMeta(records, sevenDayMs, now, true)
+    : null;
+  const sevenDayUsed = sevenDayMeta
+    ? sevenDayMeta.used + qtpAlibabaUntracked7d(limits, sevenDayMeta.start)
+    : (() => {
+        let used = 0;
+        if (Array.isArray(records)) {
+          for (const r of records) {
+            const t =
+              typeof r?.timestamp === "number"
+                ? r.timestamp
+                : r?.timestamp
+                  ? new Date(r.timestamp).getTime()
+                  : NaN;
+            if (!Number.isFinite(t) || t < cutoff7d || t > now) continue;
+            used += qtpNum(r?.promptTokens, 0) + qtpNum(r?.completionTokens, 0);
+          }
+        }
+        return used;
+      })();
 
   const limit5h = qtpNum(
     limits?.limit5h || limits?.quotaLimit5h || limits?.fiveHourLimit,
-    0,
+    useCredits ? plan.limit5h : 0,
   );
   const limit7d = qtpNum(
     limits?.limit7d || limits?.quotaLimit7d || limits?.sevenDayLimit,
-    0,
+    useCredits ? plan.limit7d : 0,
   );
+  const name5h = useCredits ? "Créditos 5h (estimado)" : "Consumo 5h (medido local)";
+  const name7d = useCredits ? "Créditos 7d (estimado)" : "Consumo 7d (medido local)";
+  const quotas = {
+    [name5h]: qtpLocalQuota(fiveHourUsed, limit5h),
+    [name7d]: qtpLocalQuota(sevenDayUsed, limit7d),
+  };
 
   return {
-    plan: "Alibaba Token Plan (medido pelo router)",
+    plan: useCredits
+      ? `Alibaba Token Plan ${plan.name} (créditos estimados)`
+      : "Alibaba Token Plan (medido pelo router)",
     status: "ok",
     source: "router-local",
     fetchedAt: new Date(now).toISOString(),
-    quotas: {
-      "Consumo 5h (medido local)": qtpLocalQuota(fiveHourTokens, limit5h),
-      "Consumo 7d (medido local)": qtpLocalQuota(sevenDayTokens, limit7d),
-    },
+    quotas,
   };
 }
 
 async function qtpAlibaba(arg, now = Date.now()) {
-  const connId = String(arg?.connectionId || arg?.id || "").trim();
+  let connId = String(arg?.connectionId || arg?.id || "").trim();
   const psd = arg?.providerSpecificData || {};
   const sevenDayMs = 7 * 86400 * 1000;
   const cutoff7dIso = new Date(now - sevenDayMs).toISOString();
@@ -985,24 +1171,27 @@ async function qtpAlibaba(arg, now = Date.now()) {
         } catch (_) {}
       }
     }
-    if (db && typeof db.all === "function") {
-      if (connId) {
-        rows = db.all(
-          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE (provider IN ('qwen-cloud-token-plan', 'alitp-intl') OR connectionId = ?) AND timestamp >= ?",
-          [connId, cutoff7dIso],
-        );
-      } else {
-        rows = db.all(
-          "SELECT promptTokens, completionTokens, timestamp FROM usageHistory WHERE provider IN ('qwen-cloud-token-plan', 'alitp-intl') AND timestamp >= ?",
-          [cutoff7dIso],
-        );
-      }
+    if (db && !connId && arg?.apiKey && typeof db.get === "function") {
+      const found = db.get(
+        "SELECT id FROM providerConnections WHERE provider IN ('alitp-intl', 'qwen-cloud-token-plan') AND json_extract(data, '$.apiKey') = ?",
+        [String(arg.apiKey)],
+      );
+      connId = String(found?.id || "").trim();
+    }
+    if (db && typeof db.all === "function" && connId) {
+      rows = db.all(
+        "SELECT promptTokens, completionTokens, tokens, timestamp, model FROM usageHistory WHERE connectionId = ? AND timestamp >= ?",
+        [connId, cutoff7dIso],
+      );
     }
   } catch (err) {
     console.warn("[LocalQuotaMeter] DB query error:", err);
   }
 
-  return qtpCalcSlidingWindowUsage(rows, now, psd);
+  return qtpCalcSlidingWindowUsage(rows, now, {
+    ...psd,
+    unit: psd.unit || psd.quotaUnit || "credits",
+  });
 }
 function hash(content) {
   return crypto.createHash("sha256").update(content).digest("hex");
@@ -1048,7 +1237,7 @@ function stripV1(content) {
 }
 
 function variantHasOfficialDeepSeekUsage() {
-  return /0\.5\.(45|50|55)$/.test(String(CATALOG_VARIANT));
+  return /0\.5\.(45|50|55|59)$/.test(String(CATALOG_VARIANT));
 }
 
 function overlayUsageAllowIds(options = {}) {
@@ -1076,12 +1265,18 @@ function runtimeFunctions(options = {}) {
     qtpDate,
     qtpQuota,
     qtpBalance,
+    qtpCommandCodeMonthlyTotal,
     qtpParseOpenRouter,
     qtpParseCommandCode,
     qtpParseMimo,
     qtpParseCline,
     qtpParseOpenCodeGo,
     qtpLocalQuota,
+    qtpAlibabaPlanLimits,
+    qtpEstimateAlibabaCredits,
+    qtpAlibabaWindowMeta,
+    qtpAlibabaWindowUsage,
+    qtpAlibabaUntracked7d,
     qtpCalcSlidingWindowUsage,
     qtpAlibaba,
   ];
@@ -1132,10 +1327,19 @@ function buildUsagePatched(original) {
   }
 
   const includeDeepSeek = !/[,{]deepseek:/.test(original);
-  return original.replace(
+  const patched = original.replace(
     dispatchMarker,
     `${injectedCode({ includeDeepSeek })}let ${dispatchVar}={...qtpProviders,github:`,
   );
+  const usageCall =
+    "await j({provider:d,accessToken:e,apiKey:f,providerSpecificData:g,providerDataWithProjectId:i,proxyOptions:b,force:!0===c.force})";
+  if (patched.includes(usageCall)) {
+    return patched.replace(
+      usageCall,
+      "await j({provider:d,accessToken:e,apiKey:f,providerSpecificData:g,providerDataWithProjectId:i,proxyOptions:b,force:!0===c.force,id:a.id,connectionId:a.id||a.connectionId})",
+    );
+  }
+  return patched;
 }
 
 function buildProvidersPatched(original, options = {}) {
@@ -1161,6 +1365,14 @@ function buildProvidersPatched(original, options = {}) {
 
 function buildLegacyUiPatched(original) {
   if (original.includes(UI_MARKER)) return original;
+  const modernPattern =
+    /children:([A-Za-z_$][\w$]*)\?`\$\{([A-Za-z_$][\w$]*)\.used\.toLocaleString\(\)\} used \\xb7 Unlimited`:`\$\{\2\.used\.toLocaleString\(\)\} \/ \$\{\2\.total>0\?\2\.total\.toLocaleString\(\):"∞"\}`/g;
+  const modernMatches = [...original.matchAll(modernPattern)];
+  if (modernMatches.length === 1) {
+    return original.replace(modernPattern, (_whole, unlimited, item) =>
+      `children:${unlimited}?\`\${${item}.used.toLocaleString()} used \\xb7 Unlimited\`:${item}.name.includes("(USD)")?[${item}.used.toLocaleString("pt-BR",{style:"currency",currency:"USD"})," / ",${item}.total.toLocaleString("pt-BR",{style:"currency",currency:"USD"})]:[${item}.used.toLocaleString()," / ",${item}.total>0?${item}.total.toLocaleString():"∞"]${UI_MARKER}`,
+    );
+  }
   const matches = [
     {
       old: 'children:[a.used.toLocaleString()," / ",a.total>0?a.total.toLocaleString():"∞"]',
@@ -1394,10 +1606,16 @@ function apply() {
       throw new Error(`Unsupported bundle hash for ${entry.relative}: ${actualHash}`);
     }
   }
-  const outputs = entries.map((entry) => ({
-    ...entry,
-    patched: buildPatched(entry.relative, entry.content),
-  }));
+  const outputs = entries.map((entry) => {
+    try {
+      return {
+        ...entry,
+        patched: buildPatched(entry.relative, entry.content),
+      };
+    } catch (error) {
+      throw new Error(`${entry.relative}: ${error.message}`);
+    }
+  });
   for (const entry of entries) saveOriginal(entry.relative, entry.content);
   for (const output of outputs) atomicWrite(output.file, output.patched);
   return true;
@@ -1526,6 +1744,9 @@ module.exports = {
   qtpNormalizeXai,
   qtpQuota,
   qtpLocalQuota,
+  qtpAlibabaPlanLimits,
+  qtpEstimateAlibabaCredits,
+  qtpAlibabaWindowUsage,
   qtpCalcSlidingWindowUsage,
   qtpAlibaba,
   buildProviderCatalogPatched,

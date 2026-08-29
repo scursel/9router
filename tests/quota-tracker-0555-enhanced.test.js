@@ -65,6 +65,18 @@ assert.ok(usage.includes('"qwen-cloud-token-plan":a=>qtpAlibaba'));
 assert.ok(!usage.includes("qtpDeepSeek"), "enhanced 0.5.55 must keep official DeepSeek usage");
 assert.ok(!usage.includes("qtpNormalizeXai"), "enhanced 0.5.55 must keep official Grok usage unwrapped");
 assert.ok(/deepseek:a=>[A-Za-z_$]/.test(usage), "official DeepSeek dispatch must remain");
+assert.ok(
+  !usage.includes("qtpAntigravity"),
+  "enhanced 0.5.55 must keep the official Antigravity collector",
+);
+assert.ok(
+  usage.includes("connectionId:a.id||a.connectionId"),
+  "usage dispatch must pass connectionId into collectors",
+);
+assert.ok(
+  /antigravity:a=>[A-Za-z_$]/.test(usage),
+  "official Antigravity dispatch must remain",
+);
 
 const catalog = fs.readFileSync(
   path.join(scratch, "app/.next-cli-build/server/chunks/3547.js"),

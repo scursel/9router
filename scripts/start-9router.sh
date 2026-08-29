@@ -14,6 +14,7 @@ PATCH="$HOME/.9router/quota-tracker.patch.js"
 CORS_PATCH="$HOME/.9router/cors-preflight.patch.js"
 TOOL_LOOP_PATCH="$HOME/.9router/antigravity-tool-loop-breaker.patch"
 WAN_IMAGE_PATCH="$HOME/.9router/wan-image.patch.js"
+NVIDIA_EOL_PATCH="$HOME/.9router/remove-nvidia-eol-models.patch.js"
 DB="$HOME/.9router/db/data.sqlite"
 BACKUP_ROOT="$HOME/.9router/db/backups"
 VERSION_STATE="$HOME/.9router/quota-tracker-version"
@@ -91,6 +92,17 @@ if [[ -f "$CORS_PATCH" ]]; then
   else
     echo "[cors-preflight] apply failed; custom-server.js left untouched, continuing without it" >&2
     echo "$CORS_OUTPUT" >&2
+  fi
+fi
+
+# Runs after the quota tracker: its bundle hashes are pinned to the
+# quota-patched chunks. Fail-open, the EOL models are cosmetic.
+if [[ -f "$NVIDIA_EOL_PATCH" ]]; then
+  if NVIDIA_OUTPUT="$(node "$NVIDIA_EOL_PATCH" --apply 2>&1)"; then
+    echo "$NVIDIA_OUTPUT"
+  else
+    echo "[nvidia-eol] apply failed; catalog left untouched, continuing without it" >&2
+    echo "$NVIDIA_OUTPUT" >&2
   fi
 fi
 
