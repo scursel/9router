@@ -1,14 +1,28 @@
 # 9Router Enhanced
 
-Private compatibility overlay for 9Router with additional quota/balance
-collectors, financial formatting, a CORS preflight fix for browser/Electron
-AI clients, an Antigravity tool-loop circuit breaker, and update-safe startup
-recovery for all of the above.
+Private 9Router build with additional quota/balance collectors, financial
+formatting, a CORS preflight fix for browser/Electron AI clients, an Antigravity
+tool-loop circuit breaker, a catalog cleanup and an Alibaba WAN image adapter.
 
-This repository does not contain the 9Router npm package, compiled upstream
-bundles, account databases, API keys, OAuth tokens, or browser cookies.
+**The Enhanced is now a branch of upstream, not an overlay.** The deltas live as
+source commits on `enhanced/<version>`, built into a private CLI tarball. See
+[`docs/branch-model.md`](docs/branch-model.md) for the topology, the release
+cycle and what the conversion retired.
 
-## Modifications in this overlay
+```bash
+git fetch upstream --tags
+git worktree add .worktrees/enhanced-0.5.59 -b enhanced/0.5.59 v0.5.59
+```
+
+The compiled-bundle patchers under `patches/` are the **previous** model. They
+remain here only until the running service is cut over to the branch build; the
+branch tarball needs no patcher at all.
+
+`main` carries no 9Router source: only operation (installer, launcher, systemd)
+and docs. Neither branch carries account databases, API keys, OAuth tokens or
+browser cookies.
+
+## Modifications (previous overlay model)
 
 | # | Modification | What it does | Patch | Docs |
 |---|---|---|---|---|
