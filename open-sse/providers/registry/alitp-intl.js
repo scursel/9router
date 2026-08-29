@@ -32,4 +32,8 @@ export default {
     { id: "glm-5.2", name: "GLM 5.2" },
     { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
   ],
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
 };

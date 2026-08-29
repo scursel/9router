@@ -425,12 +425,14 @@ export default function ModelSelectModal({
       }
       if (query) {
         const providerNameMatches = group.name.toLowerCase().includes(query);
-        models = models.filter(
-          (m) =>
-            m.name.toLowerCase().includes(query) ||
-            m.id.toLowerCase().includes(query)
-        );
-        if (models.length === 0 && !providerNameMatches) return;
+        if (!providerNameMatches) {
+          models = models.filter(
+            (m) =>
+              m.name.toLowerCase().includes(query) ||
+              m.id.toLowerCase().includes(query)
+          );
+          if (models.length === 0) return;
+        }
       }
       filtered[providerId] = {
         ...group,
