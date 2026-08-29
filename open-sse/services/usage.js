@@ -29,6 +29,7 @@ import { getXiaomiMimoUsage } from "./usage/xiaomiMimo.js";
 import { getClinePassUsage } from "./usage/clinepass.js";
 import { getOpencodeGoUsage } from "./usage/opencodeGo.js";
 import { getAlibabaTokenPlanUsage } from "./usage/alibabaTokenPlan.js";
+import { normalizeXaiUsage } from "./usage/xaiNormalize.js";
 
 /**
  * Get usage data for a provider connection
@@ -58,7 +59,7 @@ const USAGE_HANDLERS = {
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
   "codebuddy-cn": (c) => getCodeBuddyCnUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
   "codebuddy-intl": (c) => getCodeBuddyIntlUsage(c.accessToken, c.apiKey, c.providerSpecificData, c.proxyOptions),
-  "grok-cli": (c) => getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
+  "grok-cli": (c) => normalizeXaiUsage(getGrokCliUsage(c.accessToken, c.providerSpecificData, c.proxyOptions)),
   kimi: (c) => getKimiUsage(c.accessToken, c.apiKey, c.proxyOptions, c.providerSpecificData),
   deepseek: (c) => getDeepseekUsage(c.apiKey, c.proxyOptions),
   zed: (c) => getZedUsage(c.accessToken, c.providerSpecificData, c.proxyOptions),
