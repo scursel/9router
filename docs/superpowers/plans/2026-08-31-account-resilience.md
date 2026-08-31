@@ -4,7 +4,9 @@
 
 **Goal:** Skip a dead account (5xx/timeout circuit breaker) and cap each account at 3 in-flight chat requests, falling through to another account of the same provider, then to combo, with dashboard badges and per-account reset.
 
-**Architecture:** Two in-memory modules (`circuitBreaker`, `accountSemaphore`) keyed `provider:connectionId`. `getProviderCredentials` filters OPEN breakers the same way it already filters model locks. `handleChat` acquires the semaphore around `handleChatCore`, records 5xx/timeout as failures and 2xx as success, and never records 429. Dashboard reads/resets via `/api/providers/circuit-breakers`. Restart clears both registries.
+**Architecture:** Two in-memory modules (`circuitBreaker`, `accountSemaphore`) keyed `provider:connectionId`. Selection uses a pure `isBlocked` peek (does not consume HALF_OPEN probes). Only `handleChat` calls mutating `canExecute` at attempt time. The semaphore slot and `recordSuccess` last until the **stream ends** (or the non-stream JSON returns), not until `handleChatCore` returns the Response. 5xx/timeout record failures; 429 does not. Dashboard via `/api/providers/circuit-breakers`. Restart clears both registries.
+
+**Review:** Claude Code 2026-08-31 — Yes with changes. C1 stream-lifetime slot, C2 `isBlocked` vs `canExecute`, C3 `getRetryAfterMs` on Task 1, I1 overlap with `TRANSIENT_COOLDOWN_MS`, I2 2s queue wait, I3 full auth mocks, I4 force 503, I5 chat-loop test. Incorporated below.
 
 **Tech Stack:** Node ESM, Vitest in `tests/`, Next.js App Router API, existing dashboard `ConnectionRow` / providers grid. Port engines from VansRouter `dev` with the spec deltas (no `proxyHash`, public `recordFailure`/`recordSuccess`).
 
@@ -15,6 +17,12 @@
 - Breaker is in-memory. Do not write it to SQLite or settings.
 - `PROVIDER_FAILURE_ERROR_CODES` = `{408, 500, 502, 503, 504}`. 429 must not be in the set.
 - Default `maxConcurrency` is `3`. `providerSpecificData.maxConcurrency` of `0` or `null` bypasses the semaphore for that account.
+- Semaphore wait timeout is **2000ms**, not 30s. Serial fallback must not stall the client.
+- `isBlocked(name)` is a pure read: true only when state is OPEN and the reset timeout has **not** elapsed. It must not transition HALF_OPEN or decrement `halfOpenRemaining`.
+- `canExecute(name)` is only called from `handleChat` immediately before an actual upstream attempt.
+- For SSE, `semaphoreRelease` + `recordSuccess`/`recordFailure` run on `onStreamComplete` / disconnect, not in a `finally` around `handleChatCore` (that returns when headers are ready; see `open-sse/handlers/chatCore/streamingHandler.js` ~104).
+- All-OPEN / all-unavailable breaker path **forces HTTP 503** so `combo.js` falls through (`!shouldFallback` on 401/403 would abort).
+- Existing `markAccountUnavailable` still model-locks ~30s on unmatched 5xx (`TRANSIENT_COOLDOWN_MS`). The breaker is cross-model accumulation, not a faster first-error hop. Do not lower the threshold to 1.
 - Do not change Antigravity tool-loop breaker, quota collectors, or proxy-fitness.
 - No new dashboard route. Badge on existing provider list + `ConnectionRow`.
 - Tests run with `cd tests && npm test -- <file>`.
@@ -53,7 +61,10 @@
   - `buildAccountBreakerName({ provider, connectionId }) → string` (`${provider}:${connectionId}`)
   - `getCircuitBreaker(name, options?)` — creates if `options` given; returns existing; returns `null` if unknown and no options
   - `recordFailure(name, error)` / `recordSuccess(name)` — no-ops if breaker missing
-  - `canExecute(name) → boolean` — `true` if missing or CLOSED/DEGRADED/HALF_OPEN probe allowed
+  - `isBlocked(name) → boolean` — pure; `true` iff registered, state OPEN, and reset timeout not elapsed. Never mutates.
+  - `canExecute(name) → boolean` — may OPEN→HALF_OPEN and consume a probe. Chat attempt only.
+  - `getRetryAfterMs(name) → number` — 0 if missing/CLOSED
+  - `shouldRecordBreakerFailure(status) → boolean`
   - `resetCircuitBreaker(name)` / `resetAllCircuitBreakers()`
   - `getAllCircuitBreakerStatuses() → Array<{ name, state, failureCount, successCount, retryAfterMs, lastFailureTime }>`
   - Defaults: `failureThreshold: 5`, `resetTimeout: 30_000`, `halfOpenRequests: 1`, `degradationThreshold: floor(5 * 0.6) = 3`
@@ -72,6 +83,9 @@ import {
   recordFailure,
   recordSuccess,
   canExecute,
+  isBlocked,
+  getRetryAfterMs,
+  shouldRecordBreakerFailure,
   buildAccountBreakerName,
   STATE,
   PROVIDER_FAILURE_ERROR_CODES,
@@ -138,8 +152,35 @@ describe("CircuitBreaker", () => {
     expect(getCircuitBreaker("glm:reset").getStatus().state).toBe(STATE.CLOSED);
   });
 
-  it("missing breaker can execute (fail-open)", () => {
+  it("missing breaker is not blocked (fail-open)", () => {
+    expect(isBlocked("glm:unknown")).toBe(false);
     expect(canExecute("glm:unknown")).toBe(true);
+  });
+
+  it("isBlocked does not consume the HALF_OPEN probe", async () => {
+    getCircuitBreaker("glm:peek", { failureThreshold: 1, resetTimeout: 40, halfOpenRequests: 1 });
+    recordFailure("glm:peek", { statusCode: 500 });
+    expect(isBlocked("glm:peek")).toBe(true);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(isBlocked("glm:peek")).toBe(false);
+    expect(getCircuitBreaker("glm:peek").getStatus().state).toBe(STATE.OPEN);
+    expect(canExecute("glm:peek")).toBe(true);
+    expect(getCircuitBreaker("glm:peek").getStatus().state).toBe(STATE.HALF_OPEN);
+    expect(canExecute("glm:peek")).toBe(false);
+  });
+
+  it("getRetryAfterMs is 0 when CLOSED and positive when OPEN", () => {
+    getCircuitBreaker("glm:retry", { failureThreshold: 1, resetTimeout: 10_000 });
+    expect(getRetryAfterMs("glm:retry")).toBe(0);
+    recordFailure("glm:retry", { statusCode: 500 });
+    expect(getRetryAfterMs("glm:retry")).toBeGreaterThan(0);
+  });
+
+  it("shouldRecordBreakerFailure is 5xx/408 only", () => {
+    expect(shouldRecordBreakerFailure(500)).toBe(true);
+    expect(shouldRecordBreakerFailure(408)).toBe(true);
+    expect(shouldRecordBreakerFailure(429)).toBe(false);
+    expect(shouldRecordBreakerFailure(401)).toBe(false);
   });
 
   it("getAllCircuitBreakerStatuses lists registered names", () => {
@@ -182,6 +223,24 @@ export function canExecute(name) {
   const breaker = registry.get(name);
   if (!breaker) return true;
   return breaker.canExecute();
+}
+
+/** Pure: do not OPEN→HALF_OPEN. Used by getProviderCredentials. */
+export function isBlocked(name) {
+  const breaker = registry.get(name);
+  if (!breaker) return false;
+  if (breaker.state !== STATE.OPEN) return false;
+  return breaker.getRetryAfterMs() > 0;
+}
+
+export function getRetryAfterMs(name) {
+  const breaker = registry.get(name);
+  if (!breaker) return 0;
+  return breaker.getRetryAfterMs();
+}
+
+export function shouldRecordBreakerFailure(status) {
+  return PROVIDER_FAILURE_ERROR_CODES.has(status);
 }
 ```
 
@@ -350,7 +409,7 @@ EOF
 
 **Interfaces:**
 - Consumes: `buildAccountBreakerName`, `canExecute`, `getCircuitBreaker`, `recordFailure`, `resetAllCircuitBreakers` from `open-sse/utils/circuitBreaker.js`.
-- Produces: `getProviderCredentials` never returns a connection whose breaker `canExecute()` is false. If every remaining account is OPEN, return `{ allRateLimited: true, retryAfter, retryAfterHuman }` using the shortest `retryAfterMs` among those breakers (ISO timestamp = now + ms).
+- Produces: `getProviderCredentials` never returns a connection whose `isBlocked(name)` is true. If every remaining account is OPEN, return `{ allRateLimited: true, retryAfter, retryAfterHuman, lastErrorCode: 503 }` using the shortest `getRetryAfterMs` among those breakers (ISO timestamp = now + ms).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -419,7 +478,7 @@ describe("getProviderCredentials skips OPEN breakers", () => {
 });
 ```
 
-If the auth module import graph needs extra mocks (logger, antigravity quota, models), copy the `vi.mock` list from `tests/unit/antigravity-quota-routing.test.js` until the file loads. Do not weaken assertions.
+**Mocks:** copy the full `vi.mock` list from `tests/unit/antigravity-quota-routing.test.js` lines 9–27 (`@/lib/localDb` must export `validateApiKey`; also mock `@/shared/constants/providers.js`, `open-sse/services/usage/google.js`, `@/sse/utils/logger.js`). Do not invent a thinner mock — it will fail to load `auth.js`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -436,8 +495,8 @@ In `src/sse/services/auth.js`:
 ```js
 import {
   buildAccountBreakerName,
-  canExecute,
-  getCircuitBreaker,
+  isBlocked,
+  getRetryAfterMs,
 } from "open-sse/utils/circuitBreaker.js";
 ```
 
@@ -445,22 +504,23 @@ import {
 
 ```js
 const breakerName = buildAccountBreakerName({ provider: providerId, connectionId: c.id });
-if (!canExecute(breakerName)) return false;
+if (isBlocked(breakerName)) return false;
 ```
+
+Do **not** call `canExecute` here.
 
 3. When `availableConnections.length === 0`, also consider OPEN breakers for retry timing. After existing lock/quota expiry collection:
 
 ```js
 for (const c of connections) {
   const breakerName = buildAccountBreakerName({ provider: providerId, connectionId: c.id });
-  const breaker = getCircuitBreaker(breakerName);
-  if (!breaker || canExecute(breakerName)) continue;
-  const ms = breaker.getRetryAfterMs();
+  if (!isBlocked(breakerName)) continue;
+  const ms = getRetryAfterMs(breakerName);
   if (ms > 0) expiries.push(new Date(Date.now() + ms).toISOString());
 }
 ```
 
-Reuse the existing `{ allRateLimited, retryAfter, retryAfterHuman }` return. Do not invent a new flag.
+Reuse `{ allRateLimited, retryAfter, retryAfterHuman }`. Set `lastErrorCode: 503` when the only reason none are available is breakers (so combo does not abort on a stale 401).
 
 - [ ] **Step 4: Run tests and make sure they pass**
 
@@ -490,66 +550,28 @@ EOF
 
 **Interfaces:**
 - Consumes: `acquire`, `resolveAccountSemaphoreKey`, `resolveAccountSemaphoreMaxConcurrency`, `isSemaphoreCapacityError` from `accountSemaphore.js`; `getCircuitBreaker`, `buildAccountBreakerName`, `recordFailure`, `recordSuccess`, `PROVIDER_FAILURE_ERROR_CODES` from `circuitBreaker.js`.
-- Produces: each chat attempt on an account (1) ensures a breaker exists with `failureThreshold: 5`, `resetTimeout: 30_000`, `isFailure` checking `PROVIDER_FAILURE_ERROR_CODES`, (2) acquires the semaphore, (3) always releases, (4) `recordSuccess` on `result.success`, (5) `recordFailure({ statusCode: result.status })` when `result.status` is in `PROVIDER_FAILURE_ERROR_CODES`, (6) semaphore capacity → `excludeConnectionIds.add` and `continue` without recording a breaker failure.
+- Produces: each chat attempt (1) `getCircuitBreaker` with threshold 5, (2) `canExecute(breakerName)` — if false, exclude and continue (do not acquire), (3) acquire with `timeoutMs: 2000`, (4) on JSON success: `recordSuccess` + release, (5) on SSE success: return the Response **without** releasing; attach release + `recordSuccess` to `onStreamComplete` and release + `recordFailure` (or no success) on disconnect, (6) 5xx/timeout: `recordFailure` + existing `markAccountUnavailable`, (7) 429: no `recordFailure`, (8) capacity error: exclude, continue, (9) all-accounts-exhausted path uses status 503.
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `tests/unit/account-breaker-routing.test.js` (same file, new describe) a focused test of a tiny helper if you extract one; otherwise add `tests/unit/chat-account-resilience.test.js` that mocks `handleChatCore` like `tests/unit/fetch-success-clears-account.test.js`.
+Add `tests/unit/chat-account-resilience.test.js` that mocks `handleChatCore` the way `tests/unit/fetch-success-clears-account.test.js` mocks collaborators. Cover:
 
-Minimum:
+1. `handleChatCore` returns `{ success: false, status: 500 }` → after `failureThreshold: 1` (or 5 recorded via the real helper with a test breaker), the account is blocked; 429 must not block.
+2. SSE: `handleChatCore` returns `{ success: true, response }` immediately; the semaphore key stays held until a captured `onStreamComplete` from the mock args runs — a second `acquire(..., { maxConcurrency: 1, timeoutMs: 50 })` on the same key fails before complete and succeeds after.
 
-```js
-it("5xx records a failure and 429 does not", async () => {
-  // After one 500 with failureThreshold 1, canExecute(name) is false.
-  // After one 429, canExecute(name) stays true.
-});
-```
-
-If mocking `handleChat` is too heavy, extract in this task:
-
-```js
-export function shouldRecordBreakerFailure(status) {
-  return PROVIDER_FAILURE_ERROR_CODES.has(status);
-}
-```
-
-in `open-sse/utils/circuitBreaker.js` and test that plus a unit test that `handleChat` calls `recordFailure` — prefer wiring in `chat.js` and testing `shouldRecordBreakerFailure` + an integration-style mock of the loop if the file already has chat handler tests.
-
-Look at `tests/unit/chat-client-abort-fallback.test.js` on Vans only as a pattern; do not copy proxyHash.
-
-Write:
-
-```js
-import { shouldRecordBreakerFailure, PROVIDER_FAILURE_ERROR_CODES } from "../../open-sse/utils/circuitBreaker.js";
-
-it("records 500/408 and not 429/401", () => {
-  expect(shouldRecordBreakerFailure(500)).toBe(true);
-  expect(shouldRecordBreakerFailure(408)).toBe(true);
-  expect(shouldRecordBreakerFailure(429)).toBe(false);
-  expect(shouldRecordBreakerFailure(401)).toBe(false);
-  expect(PROVIDER_FAILURE_ERROR_CODES.has(429)).toBe(false);
-});
-```
-
-in `tests/unit/circuit-breaker.test.js` (extend Task 1 file). That test should already pass once `shouldRecordBreakerFailure` exists — write it first so it fails.
+Do not treat `shouldRecordBreakerFailure(500) === true` as sufficient coverage for this task (that assertion already lives in Task 1).
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd tests && npm test -- unit/circuit-breaker.test.js`
+Run: `cd tests && npm test -- unit/chat-account-resilience.test.js`
 
-Expected: FAIL on `shouldRecordBreakerFailure is not a function`.
+Expected: FAIL — `handleChat` does not record failures / does not hold the semaphore across the stream.
 
 - [ ] **Step 3: Write minimal implementation**
 
-1. In `circuitBreaker.js`:
+In `src/sse/handlers/chat.js`, import semaphore + breaker helpers. Skip `noauth` (no `connectionId`).
 
-```js
-export function shouldRecordBreakerFailure(status) {
-  return PROVIDER_FAILURE_ERROR_CODES.has(status);
-}
-```
-
-2. In `src/sse/handlers/chat.js`, import semaphore + breaker helpers. Inside the loop, **after** credentials are resolved and token refresh, **before** `handleChatCore`:
+After token refresh, **before** `handleChatCore`:
 
 ```js
 const breakerName = buildAccountBreakerName({
@@ -561,6 +583,10 @@ getCircuitBreaker(breakerName, {
   resetTimeout: 30_000,
   isFailure: (err) => shouldRecordBreakerFailure(err?.statusCode),
 });
+if (!canExecute(breakerName)) {
+  excludeConnectionIds.add(credentials.connectionId);
+  continue;
+}
 
 const semaphoreKey = resolveAccountSemaphoreKey({
   provider,
@@ -572,7 +598,7 @@ if (semaphoreKey && semaphoreMax != null) {
   try {
     semaphoreRelease = await acquire(semaphoreKey, {
       maxConcurrency: semaphoreMax,
-      timeoutMs: 30_000,
+      timeoutMs: 2000,
     });
   } catch (e) {
     if (isSemaphoreCapacityError(e)) {
@@ -584,43 +610,37 @@ if (semaphoreKey && semaphoreMax != null) {
   }
 }
 
-let result;
-try {
-  result = await handleChatCore({ /* existing args unchanged */ });
-} finally {
-  semaphoreRelease();
-}
-
-if (result.success) {
-  recordSuccess(breakerName);
-  return result.response;
-}
-
-if (shouldRecordBreakerFailure(result.status)) {
-  recordFailure(breakerName, { statusCode: result.status, message: result.error });
-}
+const result = await handleChatCore({ /* existing args, plus: */ });
 ```
 
-Keep the existing Antigravity 409/429 quota path and `markAccountUnavailable` **after** this. 429 still goes to `markAccountUnavailable` only.
+**Non-stream** (`result.success` and body is not SSE, or `body.stream` is false): `recordSuccess(breakerName); semaphoreRelease(); return result.response`.
 
-`noauth` connections: `connectionId` may be missing. `resolveAccountSemaphoreKey` returns null → skip semaphore. Do not create a breaker for `id: "noauth"`.
+**SSE** (`result.success` and streaming): do **not** release in `finally`. Wrap the existing `onStreamComplete` / disconnect path used by `handleChatCore` (see `buildOnStreamComplete` and `streamController.onDisconnect` in `open-sse/handlers/chatCore/streamingHandler.js`) so that:
+
+- complete → `recordSuccess(breakerName); semaphoreRelease();`
+- disconnect / stream error → `semaphoreRelease();` (do not `recordSuccess`; if the core already surfaced a 5xx, `recordFailure` already ran)
+
+**Non-success:** if `shouldRecordBreakerFailure(result.status)` then `recordFailure(...)`. Always `semaphoreRelease()` here. Then existing Antigravity 409/429 + `markAccountUnavailable`.
+
+When `!credentials || credentials.allRateLimited` and the reason is breakers, pass `HTTP_STATUS.SERVICE_UNAVAILABLE` (503) into `unavailableResponse`, ignoring a stale `lastErrorCode` of 401/403.
+
+Keep `markAccountUnavailable` after this. 429 still only goes there.
 
 - [ ] **Step 4: Run tests and make sure they pass**
 
-Run: `cd tests && npm test -- unit/circuit-breaker.test.js unit/account-semaphore.test.js unit/account-breaker-routing.test.js unit/antigravity-quota-routing.test.js tests/translator/tool-loop-breaker.test.js`
+Run: `cd tests && npm test -- unit/circuit-breaker.test.js unit/account-semaphore.test.js unit/account-breaker-routing.test.js unit/chat-account-resilience.test.js unit/antigravity-quota-routing.test.js ../tests/translator/tool-loop-breaker.test.js`
 
 Expected: PASS. Tool-loop breaker tests must still pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add open-sse/utils/circuitBreaker.js src/sse/handlers/chat.js tests/unit/circuit-breaker.test.js
+git add src/sse/handlers/chat.js tests/unit/chat-account-resilience.test.js
 git commit -m "$(cat <<'EOF'
 feat(chat): gate each account with semaphore and breaker
 
-Acquire 3-wide per-account concurrency around handleChatCore.
-Count 5xx/timeout toward the breaker; leave 429 to existing
-account cooldown.
+Hold the 3-wide slot until the stream ends. Count 5xx/timeout
+toward the breaker; leave 429 to existing account cooldown.
 EOF
 )"
 ```
@@ -699,11 +719,11 @@ export async function POST(_req, { params }) {
 }
 ```
 
-Hook `src/shared/hooks/useCircuitBreakers.js` — poll GET every 5s (copy Vans `useCircuitBreakers.js`). `getCircuitBreakerForConnection(providerId, connectionId)` matches `name === `${providerId}:${connectionId}``. `getOpenCountForProvider(providerId)` counts statuses where `name.startsWith(providerId + ":")` and `state !== "CLOSED"`.
+Hook `src/shared/hooks/useCircuitBreakers.js` — poll GET every 5s **only while any breaker is not CLOSED**; otherwise fetch on mount / after reset. Export it from `src/shared/hooks/index.js`. `getCircuitBreakerForConnection(providerId, connectionId)` matches `name === `${providerId}:${connectionId}``. `getOpenCountForProvider(providerId)` counts statuses where `name.startsWith(providerId + ":")` and `state !== "CLOSED"`.
 
 `CircuitBreakerBadge` — copy Vans file; labels can stay English to match the rest of the dashboard (`Degraded`, `Circuit Open`, `Recovering`).
 
-`ConnectionRow`: add optional props `circuitBreaker`, `onResetCircuit`. Render `<CircuitBreakerBadge status={circuitBreaker} onReset={onResetCircuit} />` next to the existing status badge.
+`ConnectionRow`: add optional props `circuitBreaker`, `onResetCircuit` **and** extend `ConnectionRow.propTypes` (file already has them at ~line 280). Render `<CircuitBreakerBadge status={circuitBreaker} onReset={onResetCircuit} />` next to the existing status badge. Labels stay English.
 
 Provider detail page: `useCircuitBreakers()`, pass into each `ConnectionRow`.
 
@@ -744,10 +764,13 @@ EOF
 | Other accounts of same provider still used | 3 |
 | All OPEN → 503 Retry-After / combo | 3 (combo already treats 503) |
 | Semaphore default 3; 0/null bypass; other account unaffected | 2, 4 |
-| In-memory only, restart clears | 1 (`resetAll` / process restart) |
+| In-memory only, restart clears | 1 (process-local Map; `resetAll` in tests is not a restart — do not claim it is) |
+| Stream-lifetime semaphore | 4 |
+| `isBlocked` vs mutating `canExecute` | 1, 3, 4 |
+| Force 503 so combo falls through | 3, 4 |
 | No proxy-fitness, no settings cache, no new page | File map — those files are not created |
 | Antigravity tool-loop untouched | Task 4 regression test |
 | Dashboard badge + per-account reset | 5 |
 | Chat-only semaphore | 4 |
 
-No TBD/TODO. Names (`buildAccountBreakerName`, `recordFailure`, `canExecute`, `shouldRecordBreakerFailure`) are consistent across tasks.
+No TBD/TODO. Names (`buildAccountBreakerName`, `isBlocked`, `canExecute`, `getRetryAfterMs`, `recordFailure`, `recordSuccess`, `shouldRecordBreakerFailure`) are consistent across tasks.
