@@ -259,7 +259,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return errorResponse(HTTP_STATUS.NOT_FOUND, `No active credentials for provider: ${provider}`);
       }
       log.warn("CHAT", "No more accounts available", { provider });
-      return errorResponse(lastStatus || HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
+      // Do not surface a stale lastStatus 401/403 after the account list is exhausted.
+      return errorResponse(HTTP_STATUS.SERVICE_UNAVAILABLE, lastError || "All accounts unavailable");
     }
 
     // Account selection shown in the unified "▶" line (acc:...)
@@ -383,7 +384,9 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
       if (result.success) {
         const contentType = result.response?.headers?.get?.("content-type") || "";
-        const isStreaming = body.stream === true || contentType.includes("text/event-stream");
+        // Hold only for actual SSE. body.stream can be true while chatCore
+        // returns JSON (e.g. image-gen forced stream=false).
+        const isStreaming = contentType.includes("text/event-stream");
         if (isStreaming) {
           holdSemaphore = true;
           return result.response;
