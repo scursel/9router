@@ -11,6 +11,7 @@ import { getCommandCodeUsage, parseCommandCode, commandCodeMonthlyTotal } from "
 import { getXiaomiMimoUsage, parseMimo } from "../../open-sse/services/usage/xiaomiMimo.js";
 import { getClinePassUsage, parseCline } from "../../open-sse/services/usage/clinepass.js";
 import { getOpencodeGoUsage, parseOpenCodeGo } from "../../open-sse/services/usage/opencodeGo.js";
+import { USAGE_SUPPORTED_PROVIDERS, USAGE_APIKEY_PROVIDERS } from "../../src/shared/constants/providers.js";
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -22,6 +23,16 @@ function jsonResponse(body, status = 200) {
 describe("Quota Collectors - Unit Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("registry flags so Enhanced collector cards appear on /quota", () => {
+    it.each(["commandcode", "openrouter", "xiaomi-mimo", "clinepass"])(
+      "exposes usage + usageApikey for %s",
+      (provider) => {
+        expect(USAGE_SUPPORTED_PROVIDERS).toContain(provider);
+        expect(USAGE_APIKEY_PROVIDERS).toContain(provider);
+      },
+    );
   });
 
   describe("OpenRouter Usage Collector", () => {
