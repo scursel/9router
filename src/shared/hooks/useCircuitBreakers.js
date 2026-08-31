@@ -10,6 +10,7 @@ function anyBreakerNotClosed(breakers) {
 
 async function loadCircuitBreakers() {
   const res = await fetch("/api/providers/circuit-breakers");
+  if (!res.ok) throw new Error(`circuit-breakers GET ${res.status}`);
   const data = await res.json();
   return Array.isArray(data.breakers) ? data.breakers : [];
 }
@@ -86,9 +87,10 @@ export function useCircuitBreakers() {
 
   const resetCircuitBreaker = useCallback(async (name) => {
     try {
-      await fetch(`/api/providers/circuit-breakers/${encodeURIComponent(name)}/reset`, {
+      const res = await fetch(`/api/providers/circuit-breakers/${encodeURIComponent(name)}/reset`, {
         method: "POST",
       });
+      if (!res.ok) throw new Error(`reset ${name} → ${res.status}`);
       await fetchStatuses();
       return true;
     } catch (error) {
