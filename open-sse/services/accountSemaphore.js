@@ -42,6 +42,7 @@ function ensureGate(semaphoreKey, maxConcurrency) {
     queue: [],
     blockedUntil: null,
     cleanupTimer: null,
+    unblockTimer: null,
   };
   gates.set(semaphoreKey, gate);
   return gate;
@@ -53,6 +54,10 @@ function cleanupGateIfIdle(semaphoreKey, gate) {
     if (gate.cleanupTimer) {
       clearTimeout(gate.cleanupTimer);
       gate.cleanupTimer = null;
+    }
+    if (gate.unblockTimer) {
+      clearTimeout(gate.unblockTimer);
+      gate.unblockTimer = null;
     }
     gates.delete(semaphoreKey);
   }
@@ -82,14 +87,19 @@ export function acquire(semaphoreKey, options = {}) {
     return Promise.resolve(() => {});
   }
 
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason || new Error("Aborted"));
+  }
+
   const gate = ensureGate(semaphoreKey, maxConcurrency);
 
-  // Check if gate is blocked (e.g. from 429 markBlocked)
+  // Check if gate is blocked (e.g. from 429 markBlocked).
+  // Do not grant ahead of queued waiters (FIFO after unblock).
   if (gate.blockedUntil && Date.now() < gate.blockedUntil) {
     // Still blocked — queue the request
   } else {
     gate.blockedUntil = null;
-    if (gate.running < gate.maxConcurrency) {
+    if (gate.running < gate.maxConcurrency && gate.queue.length === 0) {
       gate.running++;
       let released = false;
       return Promise.resolve(() => {
@@ -108,49 +118,85 @@ export function acquire(semaphoreKey, options = {}) {
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let entry;
+
+    const settleCleanup = () => {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener?.("abort", onAbort);
+      if (entry) {
+        const idx = gate.queue.indexOf(entry);
+        if (idx >= 0) gate.queue.splice(idx, 1);
+      }
+    };
+
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      settleCleanup();
+      reject(signal.reason || new Error("Aborted"));
+    };
+
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      const idx = gate.queue.indexOf(entry);
-      if (idx >= 0) gate.queue.splice(idx, 1);
+      settleCleanup();
       reject(new SemaphoreCapacityError(semaphoreKey, timeoutMs));
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
-    if (signal) {
-      signal.addEventListener?.("abort", () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        const idx = gate.queue.indexOf(entry);
-        if (idx >= 0) gate.queue.splice(idx, 1);
-        reject(signal.reason || new Error("Aborted"));
-      });
-    }
-
-    const entry = {
+    entry = {
       resolve: (release) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (signal) signal.removeEventListener?.("abort", onAbort);
         resolve(release);
       },
       reject: (err) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (signal) signal.removeEventListener?.("abort", onAbort);
         reject(err);
       },
       timer,
     };
     gate.queue.push(entry);
+
+    if (signal) {
+      // Already-aborted signals do not fire "abort" for a newly added listener on Node.
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener?.("abort", onAbort);
+    }
+
     scheduleCleanup(semaphoreKey, gate);
   });
 }
 
+function scheduleUnblockDrain(semaphoreKey, gate) {
+  if (gate.unblockTimer) {
+    clearTimeout(gate.unblockTimer);
+    gate.unblockTimer = null;
+  }
+  if (gate.running !== 0 || gate.queue.length === 0) return;
+  if (!gate.blockedUntil) return;
+  const delay = Math.max(0, gate.blockedUntil - Date.now());
+  gate.unblockTimer = setTimeout(() => {
+    gate.unblockTimer = null;
+    drainQueue(semaphoreKey, gate);
+  }, delay);
+  if (typeof gate.unblockTimer.unref === "function") gate.unblockTimer.unref();
+}
+
 function drainQueue(semaphoreKey, gate) {
   while (gate.queue.length > 0 && gate.running < gate.maxConcurrency) {
-    if (gate.blockedUntil && Date.now() < gate.blockedUntil) break;
+    if (gate.blockedUntil && Date.now() < gate.blockedUntil) {
+      scheduleUnblockDrain(semaphoreKey, gate);
+      break;
+    }
     gate.blockedUntil = null;
     const entry = gate.queue.shift();
     if (!entry) break;
@@ -172,6 +218,8 @@ function drainQueue(semaphoreKey, gate) {
 
 /**
  * Temporarily block all requests to a gate (e.g. after 429).
+ * When idle with waiters queued, schedule drainQueue at blockedUntil so they
+ * are not stuck until their acquire timeout.
  */
 export function markBlocked(semaphoreKey, durationMs) {
   const gate = gates.get(semaphoreKey);
@@ -180,6 +228,7 @@ export function markBlocked(semaphoreKey, durationMs) {
   if (!gate.blockedUntil || gate.blockedUntil < until) {
     gate.blockedUntil = until;
   }
+  scheduleUnblockDrain(semaphoreKey, gate);
 }
 
 /**

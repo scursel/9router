@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   acquire,
+  markBlocked,
   isSemaphoreCapacityError,
   buildAccountSemaphoreKey,
   resolveAccountSemaphoreKey,
@@ -68,5 +69,63 @@ describe("AccountSemaphore", () => {
     } finally {
       r1();
     }
+  });
+
+  it("rejects immediately when signal is already aborted", async () => {
+    const key = buildAccountSemaphoreKey({ provider: "sem-abort", connectionId: "a" });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      acquire(key, { maxConcurrency: 1, signal: controller.signal }),
+    ).rejects.toThrow();
+  });
+
+  it("aborts a queued waiter when signal aborts", async () => {
+    const key = buildAccountSemaphoreKey({ provider: "sem-abort2", connectionId: "a" });
+    const r1 = await acquire(key, { maxConcurrency: 1 });
+    const controller = new AbortController();
+    try {
+      const pending = acquire(key, {
+        maxConcurrency: 1,
+        timeoutMs: 5_000,
+        signal: controller.signal,
+      });
+      await Promise.resolve();
+      controller.abort();
+      await expect(pending).rejects.toThrow();
+    } finally {
+      r1();
+    }
+  });
+
+  it("wakes queued waiters when markBlocked expires with running===0", async () => {
+    const key = buildAccountSemaphoreKey({ provider: "sem-block", connectionId: "a" });
+    const r1 = await acquire(key, { maxConcurrency: 1 });
+    const start = Date.now();
+    const waiter = acquire(key, { maxConcurrency: 1, timeoutMs: 400 });
+    markBlocked(key, 40);
+    r1();
+    const release = await waiter;
+    expect(Date.now() - start).toBeLessThan(250);
+    release();
+  });
+
+  it("new acquires after block expiry do not jump ahead of queued waiters", async () => {
+    const key = buildAccountSemaphoreKey({ provider: "sem-fifo", connectionId: "a" });
+    const order = [];
+    const r1 = await acquire(key, { maxConcurrency: 1 });
+    const waiter = acquire(key, { maxConcurrency: 1, timeoutMs: 1_000 }).then((release) => {
+      order.push("waiter");
+      release();
+    });
+    markBlocked(key, 30);
+    r1();
+    await new Promise((r) => setTimeout(r, 50));
+    const newbie = acquire(key, { maxConcurrency: 1, timeoutMs: 1_000 }).then((release) => {
+      order.push("newbie");
+      release();
+    });
+    await Promise.all([waiter, newbie]);
+    expect(order[0]).toBe("waiter");
   });
 });
