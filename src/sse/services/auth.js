@@ -4,6 +4,11 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
+import {
+  buildAccountBreakerName,
+  isBlocked,
+  getRetryAfterMs,
+} from "open-sse/utils/circuitBreaker.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -81,7 +86,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const isAntigravity = providerId === "antigravity";
     const antigravityQuotaCache = isAntigravity && model ? getAntigravityQuotaCache() : null;
 
-    // Filter out model-locked, excluded, and Antigravity quota-exhausted connections.
+    // Filter out model-locked, excluded, Antigravity quota-exhausted, and circuit-open connections.
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
@@ -94,6 +99,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           return false;
         }
       }
+      const breakerName = buildAccountBreakerName({ provider: providerId, connectionId: c.id });
+      if (isBlocked(breakerName)) return false;
       return true;
     });
 
@@ -108,7 +115,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     });
 
     if (availableConnections.length === 0) {
-      // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing.
+      // Find earliest persistent lock, lazy Antigravity quota-cache reset, or OPEN-breaker retry.
       const lockedConns = connections.filter(c => isModelLockActive(c, model));
       const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
       if (isAntigravity && model && antigravityQuotaCache) {
@@ -116,6 +123,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           const resetAt = antigravityQuotaCache.get(c.id)?.[model]?.resetAt;
           if (resetAt && new Date(resetAt).getTime() > Date.now()) expiries.push(resetAt);
         });
+      }
+      for (const c of connections) {
+        const breakerName = buildAccountBreakerName({ provider: providerId, connectionId: c.id });
+        if (!isBlocked(breakerName)) continue;
+        const ms = getRetryAfterMs(breakerName);
+        if (ms > 0) expiries.push(new Date(Date.now() + ms).toISOString());
       }
       const earliest = expiries.sort()[0] || null;
       if (earliest) {
@@ -126,7 +139,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
           retryAfter: earliest,
           retryAfterHuman: formatRetryAfter(earliest),
           lastError: earliestConn?.lastError || null,
-          lastErrorCode: earliestConn?.errorCode || null
+          lastErrorCode: earliestConn?.errorCode || 503
         };
       }
       log.warn("AUTH", `${provider} | all ${connections.length} accounts unavailable`);
