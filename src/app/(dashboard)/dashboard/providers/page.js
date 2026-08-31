@@ -25,6 +25,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
+import { useCircuitBreakers } from "@/shared/hooks/useCircuitBreakers";
 
 function getStatusDisplay(connected, error, errorCode) {
   const parts = [];
@@ -109,6 +110,7 @@ export default function ProvidersPage() {
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
   const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
+  const { getOpenCountForProvider } = useCircuitBreakers();
 
   useEffect(() => {
     registerSearch("Search providers...");
@@ -416,6 +418,7 @@ export default function ProvidersPage() {
                   provider={info}
                   stats={getProviderStats(info.id, "apikey")}
                   authType="compatible"
+                  pausedCount={getOpenCountForProvider(info.id)}
                   onToggle={(active) =>
                     handleToggleProvider(info.id, "apikey", active)
                   }
@@ -465,6 +468,7 @@ export default function ProvidersPage() {
                 provider={info}
                 stats={getProviderStats(key, authTypes)}
                 authType="oauth"
+                pausedCount={getOpenCountForProvider(key)}
                 onToggle={(active) => handleToggleProvider(key, authTypes, active)}
               />
             );
@@ -511,6 +515,7 @@ export default function ProvidersPage() {
                 provider={info}
                 stats={getProviderStats(key, freeAuthTypes)}
                 authType="free"
+                pausedCount={getOpenCountForProvider(key)}
                 onToggle={(active) =>
                   handleToggleProvider(key, freeAuthTypes, active)
                 }
@@ -526,6 +531,7 @@ export default function ProvidersPage() {
                 provider={info}
                 stats={getProviderStats(key, freeAuthTypes)}
                 authType={Array.isArray(freeAuthTypes) ? (freeAuthTypes[0] ?? "apikey") : freeAuthTypes}
+                pausedCount={getOpenCountForProvider(key)}
                 onToggle={(active) => handleToggleProvider(key, freeAuthTypes, active)}
               />
             );
@@ -568,6 +574,7 @@ export default function ProvidersPage() {
               provider={info}
               stats={getProviderStats(key, "apikey")}
               authType="apikey"
+              pausedCount={getOpenCountForProvider(key)}
               onToggle={(active) => handleToggleProvider(key, "apikey", active)}
             />
           ))}
@@ -655,7 +662,12 @@ export default function ProvidersPage() {
   );
 }
 
-function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
+function pausedLabel(count) {
+  if (!count) return null;
+  return count === 1 ? "1 account paused" : `${count} paused`;
+}
+
+function ProviderCard({ providerId, provider, stats, authType, onToggle, pausedCount = 0 }) {
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
   const isNoAuth = !!provider.noAuth;
 
@@ -714,6 +726,11 @@ function ProviderCard({ providerId, provider, stats, authType, onToggle }) {
                 ) : (
                   <>
                     {getStatusDisplay(connected, error, errorCode)}
+                    {pausedCount > 0 && (
+                      <Badge variant="warning" size="sm">
+                        {pausedLabel(pausedCount)}
+                      </Badge>
+                    )}
                     {errorTime && (
                       <span className="text-text-muted">{errorTime}</span>
                     )}
@@ -763,6 +780,7 @@ ProviderCard.propTypes = {
   }).isRequired,
   authType: PropTypes.string,
   onToggle: PropTypes.func,
+  pausedCount: PropTypes.number,
 };
 
 function ApiKeyProviderCard({
@@ -771,6 +789,7 @@ function ApiKeyProviderCard({
   stats,
   authType,
   onToggle,
+  pausedCount = 0,
 }) {
   const { connected, error, errorCode, errorTime, allDisabled } = stats;
   const isCompatible = providerId.startsWith(OPENAI_COMPATIBLE_PREFIX);
@@ -840,6 +859,11 @@ function ApiKeyProviderCard({
                 ) : (
                   <>
                     {getStatusDisplay(connected, error, errorCode)}
+                    {pausedCount > 0 && (
+                      <Badge variant="warning" size="sm">
+                        {pausedLabel(pausedCount)}
+                      </Badge>
+                    )}
                     {isCompatible && (
                       <Badge variant="default" size="sm">
                         {provider.apiType === "responses"
@@ -902,6 +926,7 @@ ApiKeyProviderCard.propTypes = {
   }).isRequired,
   authType: PropTypes.string,
   onToggle: PropTypes.func,
+  pausedCount: PropTypes.number,
 };
 
 function ProviderTestResultsView({ results }) {

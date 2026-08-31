@@ -5,8 +5,9 @@ import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/c
 import PropTypes from "prop-types";
 import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
+import CircuitBreakerBadge from "../components/CircuitBreakerBadge";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null }) {
+export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
@@ -167,6 +168,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             <Badge variant={getStatusVariant()} size="sm" dot>
               {connection.isActive === false ? "disabled" : (effectiveStatus || "Unknown")}
             </Badge>
+            <CircuitBreakerBadge status={circuitBreaker} onReset={onResetCircuit} />
             <Badge variant="default" size="sm">
               {authLabel}
             </Badge>
@@ -315,4 +317,10 @@ ConnectionRow.propTypes = {
     onToggle: PropTypes.func,
     provider: PropTypes.string,
   }),
+  circuitBreaker: PropTypes.shape({
+    name: PropTypes.string,
+    state: PropTypes.string,
+    retryAfterMs: PropTypes.number,
+  }),
+  onResetCircuit: PropTypes.func,
 };

@@ -76,6 +76,16 @@ describe("CircuitBreaker", () => {
     expect(getCircuitBreaker("glm:reset").getStatus().state).toBe(STATE.CLOSED);
   });
 
+  it("reset of one name does not close another", () => {
+    getCircuitBreaker("glm:a", { failureThreshold: 1, isFailure: () => true });
+    getCircuitBreaker("glm:b", { failureThreshold: 1, isFailure: () => true });
+    recordFailure("glm:a", { statusCode: 500 });
+    recordFailure("glm:b", { statusCode: 500 });
+    resetCircuitBreaker("glm:a");
+    expect(canExecute("glm:a")).toBe(true);
+    expect(canExecute("glm:b")).toBe(false);
+  });
+
   it("missing breaker is not blocked (fail-open)", () => {
     expect(isBlocked("glm:unknown")).toBe(false);
     expect(canExecute("glm:unknown")).toBe(true);
