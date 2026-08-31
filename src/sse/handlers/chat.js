@@ -36,6 +36,7 @@ import {
   recordSuccess,
   canExecute,
   shouldRecordBreakerFailure,
+  STATE,
 } from "open-sse/utils/circuitBreaker.js";
 
 /**
@@ -286,17 +287,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         provider,
         connectionId,
       });
-      getCircuitBreaker(breakerName, {
-        failureThreshold: 5,
-        resetTimeout: 30_000,
-        isFailure: (err) => shouldRecordBreakerFailure(err?.statusCode),
-      });
-      if (!canExecute(breakerName)) {
-        excludeConnectionIds.add(connectionId);
-        continue;
+      if (!getCircuitBreaker(breakerName)) {
+        getCircuitBreaker(breakerName, {
+          failureThreshold: 5,
+          resetTimeout: 30_000,
+          isFailure: (err) => shouldRecordBreakerFailure(err?.statusCode),
+        });
       }
     }
 
+    // Acquire semaphore first so a 2s capacity timeout doesn't burn a
+    // HALF_OPEN probe (canExecute consumes halfOpenRemaining).
     const semaphoreKey = resolveAccountSemaphoreKey({
       provider,
       connectionId,
@@ -317,6 +318,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         }
         throw e;
       }
+    }
+
+    // Only consume HALF_OPEN probe on a real upstream attempt.
+    if (breakerName && !canExecute(breakerName)) {
+      semaphoreRelease();
+      excludeConnectionIds.add(connectionId);
+      continue;
     }
 
     let holdSemaphore = false;
@@ -386,7 +394,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         const contentType = result.response?.headers?.get?.("content-type") || "";
         // Hold only for actual SSE. body.stream can be true while chatCore
         // returns JSON (e.g. image-gen forced stream=false).
-        const isStreaming = contentType.includes("text/event-stream");
+        const isStreaming = contentType.toLowerCase().includes("text/event-stream");
         if (isStreaming) {
           holdSemaphore = true;
           return result.response;
@@ -395,8 +403,24 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return result.response;
       }
 
-      if (breakerName && shouldRecordBreakerFailure(result.status)) {
-        recordFailure(breakerName, { statusCode: result.status });
+      // Breaker accounting: HALF_OPEN must not stay at 0 with no outcome.
+      // 5xx/timeout re-opens; 401/403/429 mean provider is up, so close.
+      if (breakerName) {
+        const cb = getCircuitBreaker(breakerName);
+        const isHalfOpenProbe = cb?.getStatus?.().state === STATE.HALF_OPEN;
+        if (isHalfOpenProbe) {
+          if (shouldRecordBreakerFailure(result.status)) {
+            recordFailure(breakerName, { statusCode: result.status });
+          } else if (result.status === 401 || result.status === 403 || result.status === 429) {
+            recordSuccess(breakerName);
+          } else if (!shouldRecordBreakerFailure(result.status)) {
+            // Any other non-5xx while HALF_OPEN should also close the probe
+            // so it doesn't stay stuck at 0. Treat as success.
+            recordSuccess(breakerName);
+          }
+        } else if (shouldRecordBreakerFailure(result.status)) {
+          recordFailure(breakerName, { statusCode: result.status });
+        }
       }
 
       // Antigravity 409/429: refresh live quota to get exact resetAt before locking
