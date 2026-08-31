@@ -199,6 +199,26 @@ describe("handleChat account resilience", () => {
     release();
   });
 
+  it("releases immediately when stream:true but the response is JSON", async () => {
+    mocks.handleChatCore.mockResolvedValue({
+      success: true,
+      response: new Response("{}", {
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    const response = await handleChat(chatRequest({ stream: true }));
+    expect(response.status).toBe(200);
+
+    const key = resolveAccountSemaphoreKey({
+      provider: PROVIDER,
+      connectionId: ACCOUNT_ID,
+    });
+    const release = await acquire(key, { maxConcurrency: 1, timeoutMs: 50 });
+    expect(typeof release).toBe("function");
+    release();
+  });
+
   it("returns 503 when remaining accounts are circuit-open even if lastStatus is 401", async () => {
     mocks.handleChatCore.mockResolvedValue({
       success: false,
@@ -209,6 +229,21 @@ describe("handleChat account resilience", () => {
     mocks.getProviderCredentials
       .mockResolvedValueOnce(credentials())
       .mockResolvedValueOnce(allRateLimited({ lastErrorCode: 503 }));
+
+    const response = await handleChat(chatRequest());
+    expect(response.status).toBe(503);
+  });
+
+  it("returns 503 when no credentials remain after excludes even if lastStatus is 401", async () => {
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 401,
+      error: "unauthorized",
+      response: new Response("no", { status: 401 }),
+    });
+    mocks.getProviderCredentials
+      .mockResolvedValueOnce(credentials())
+      .mockResolvedValueOnce(null);
 
     const response = await handleChat(chatRequest());
     expect(response.status).toBe(503);
