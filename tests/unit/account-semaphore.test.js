@@ -128,4 +128,19 @@ describe("AccountSemaphore", () => {
     await Promise.all([waiter, newbie]);
     expect(order[0]).toBe("waiter");
   });
+
+  it("acquire on idle blocked gate schedules unblock (not full timeoutMs)", async () => {
+    // Stuck sequence: markBlocked while running → release to idle (queue empty, no timer)
+    // → new acquire while still blocked must wake near blockedUntil, not timeoutMs.
+    const key = buildAccountSemaphoreKey({ provider: "sem-idle-block", connectionId: "a" });
+    const r1 = await acquire(key, { maxConcurrency: 1 });
+    markBlocked(key, 80);
+    r1();
+    const start = Date.now();
+    const release = await acquire(key, { maxConcurrency: 1, timeoutMs: 2_000 });
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeLessThan(500);
+    expect(elapsed).toBeGreaterThanOrEqual(40);
+    release();
+  });
 });

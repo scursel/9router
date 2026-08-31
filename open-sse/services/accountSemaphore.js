@@ -172,6 +172,12 @@ export function acquire(semaphoreKey, options = {}) {
       signal.addEventListener?.("abort", onAbort);
     }
 
+    // Idle blocked gate: markBlocked skipped the timer (running!==0); release saw
+    // an empty queue so never scheduled either. Enqueue must arm unblockDrain.
+    if (gate.blockedUntil && Date.now() < gate.blockedUntil) {
+      scheduleUnblockDrain(semaphoreKey, gate);
+    }
+
     scheduleCleanup(semaphoreKey, gate);
   });
 }
