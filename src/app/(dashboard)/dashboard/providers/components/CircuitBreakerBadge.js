@@ -1,3 +1,5 @@
+import PropTypes from "prop-types";
+
 /**
  * CircuitBreakerBadge — compact badge showing circuit breaker state for an account.
  * Hidden when status is missing or CLOSED. Integrates into existing connection rows
@@ -5,7 +7,6 @@
  */
 export default function CircuitBreakerBadge({ status, onReset }) {
   if (!status || status.state === "CLOSED") return null;
-
   const stateConfig = {
     DEGRADED: { color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400", icon: "warning", label: "Degraded" },
     OPEN: { color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", icon: "power", label: "Circuit Open" },
@@ -31,3 +32,11 @@ export default function CircuitBreakerBadge({ status, onReset }) {
     </span>
   );
 }
+
+CircuitBreakerBadge.propTypes = {
+  status: PropTypes.shape({
+    state: PropTypes.oneOf(["CLOSED", "DEGRADED", "OPEN", "HALF_OPEN"]),
+    retryAfterMs: PropTypes.number,
+  }),
+  onReset: PropTypes.func,
+};

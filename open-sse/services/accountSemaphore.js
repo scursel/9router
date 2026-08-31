@@ -13,7 +13,7 @@ export function buildAccountSemaphoreKey({ provider, connectionId }) {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_QUEUE_SIZE = 20;
-const DEFAULT_MAX_CONCURRENCY = 1;
+const DEFAULT_MAX_CONCURRENCY = 3;
 
 const gates = new Map();
 
