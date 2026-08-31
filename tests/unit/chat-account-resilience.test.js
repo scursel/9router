@@ -75,6 +75,7 @@ import {
   isBlocked,
   canExecute,
   shouldRecordBreakerFailure,
+  STATE,
 } from "../../open-sse/utils/circuitBreaker.js";
 import {
   acquire,
@@ -118,6 +119,21 @@ function allRateLimited(overrides = {}) {
     retryAfterHuman: "reset after 30s",
     ...overrides,
   };
+}
+
+function breakerOpts(overrides = {}) {
+  return {
+    failureThreshold: 5,
+    resetTimeout: 30_000,
+    isFailure: (err) => shouldRecordBreakerFailure(err?.statusCode),
+    ...overrides,
+  };
+}
+
+async function expireOpenBreaker(name, { resetTimeout = 40 } = {}) {
+  getCircuitBreaker(name, breakerOpts({ failureThreshold: 1, resetTimeout }));
+  recordFailure(name, { statusCode: 500 });
+  await new Promise((r) => setTimeout(r, resetTimeout + 10));
 }
 
 describe("handleChat account resilience", () => {
@@ -267,5 +283,127 @@ describe("handleChat account resilience", () => {
     expect(getCircuitBreaker(`${PROVIDER}:undefined`)).toBe(null);
     expect(getCircuitBreaker(`${PROVIDER}:noauth`)).toBe(null);
     expect(mocks.handleChatCore).toHaveBeenCalled();
+  });
+
+  it("does not consume a HALF_OPEN probe when acquire times out", async () => {
+    const name = buildAccountBreakerName({ provider: PROVIDER, connectionId: ACCOUNT_ID });
+    await expireOpenBreaker(name);
+
+    const key = resolveAccountSemaphoreKey({
+      provider: PROVIDER,
+      connectionId: ACCOUNT_ID,
+    });
+    const held = await acquire(key, { maxConcurrency: 1 });
+    mocks.handleChatCore.mockImplementation(async () => {
+      throw new Error("HALF_OPEN probe must not run before a real upstream attempt");
+    });
+
+    try {
+      const response = await handleChat(chatRequest());
+      expect(response.status).toBe(503);
+      expect(mocks.handleChatCore).not.toHaveBeenCalled();
+      expect(canExecute(name)).toBe(true);
+    } finally {
+      held();
+    }
+  }, 10_000);
+
+  it.each([401, 403, 429])(
+    "records HALF_OPEN %s as success so the probe is not stuck",
+    async (status) => {
+      const name = buildAccountBreakerName({ provider: PROVIDER, connectionId: ACCOUNT_ID });
+      await expireOpenBreaker(name);
+
+      mocks.handleChatCore.mockResolvedValue({
+        success: false,
+        status,
+        error: `upstream ${status}`,
+        response: new Response("no", { status }),
+      });
+
+      await handleChat(chatRequest());
+
+      const breaker = getCircuitBreaker(name);
+      expect(breaker.getStatus().state).toBe(STATE.CLOSED);
+      expect(canExecute(name)).toBe(true);
+      expect(isBlocked(name)).toBe(false);
+    },
+  );
+
+  it("re-opens the breaker when a HALF_OPEN probe returns 5xx", async () => {
+    const name = buildAccountBreakerName({ provider: PROVIDER, connectionId: ACCOUNT_ID });
+    await expireOpenBreaker(name);
+
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 500,
+      error: "upstream 500",
+      response: new Response("boom", { status: 500 }),
+    });
+
+    await handleChat(chatRequest());
+
+    expect(getCircuitBreaker(name).getStatus().state).toBe(STATE.OPEN);
+    expect(isBlocked(name)).toBe(true);
+    expect(canExecute(name)).toBe(false);
+  });
+
+  it("records 408 timeout toward the breaker", async () => {
+    const name = buildAccountBreakerName({ provider: PROVIDER, connectionId: ACCOUNT_ID });
+    getCircuitBreaker(name, breakerOpts());
+    for (let i = 0; i < 4; i++) recordFailure(name, { statusCode: 500 });
+
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 408,
+      error: "Request timeout",
+      response: new Response("timeout", { status: 408 }),
+    });
+    await handleChat(chatRequest());
+    expect(isBlocked(name)).toBe(true);
+    expect(canExecute(name)).toBe(false);
+  });
+
+  it("does not count a client abort 499 toward the breaker", async () => {
+    const name = buildAccountBreakerName({ provider: PROVIDER, connectionId: ACCOUNT_ID });
+    getCircuitBreaker(name, breakerOpts({ failureThreshold: 1 }));
+
+    mocks.handleChatCore.mockResolvedValue({
+      success: false,
+      status: 499,
+      error: "Request aborted",
+      response: new Response("aborted", { status: 499 }),
+    });
+    await handleChat(chatRequest());
+    expect(isBlocked(name)).toBe(false);
+    expect(canExecute(name)).toBe(true);
+  });
+
+  it("holds the semaphore when Content-Type is TEXT/EVENT-STREAM", async () => {
+    let capturedOnStreamComplete;
+    mocks.handleChatCore.mockImplementation(async (args) => {
+      capturedOnStreamComplete = args.onStreamComplete;
+      return {
+        success: true,
+        response: new Response("sse", {
+          headers: { "Content-Type": "TEXT/EVENT-STREAM" },
+        }),
+      };
+    });
+
+    const response = await handleChat(chatRequest({ stream: true }));
+    expect(response.status).toBe(200);
+
+    const key = resolveAccountSemaphoreKey({
+      provider: PROVIDER,
+      connectionId: ACCOUNT_ID,
+    });
+    await expect(
+      acquire(key, { maxConcurrency: 1, timeoutMs: 50 }),
+    ).rejects.toThrow(SemaphoreCapacityError);
+
+    capturedOnStreamComplete();
+    const release = await acquire(key, { maxConcurrency: 1, timeoutMs: 50 });
+    release();
   });
 });
