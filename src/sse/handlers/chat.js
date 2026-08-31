@@ -23,6 +23,20 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import {
+  acquire,
+  resolveAccountSemaphoreKey,
+  resolveAccountSemaphoreMaxConcurrency,
+  isSemaphoreCapacityError,
+} from "open-sse/services/accountSemaphore.js";
+import {
+  getCircuitBreaker,
+  buildAccountBreakerName,
+  recordFailure,
+  recordSuccess,
+  canExecute,
+  shouldRecordBreakerFailure,
+} from "open-sse/utils/circuitBreaker.js";
 
 /**
  * Handle chat completion request
@@ -232,7 +246,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (!credentials || credentials.allRateLimited) {
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
-        const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;
+        // Do not let a stale lastStatus 401/403 override breaker exhaustion (503).
+        const breakerUnavailable = Number(credentials.lastErrorCode) === HTTP_STATUS.SERVICE_UNAVAILABLE;
+        const status = breakerUnavailable
+          ? HTTP_STATUS.SERVICE_UNAVAILABLE
+          : (lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE);
         log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
         return unavailableResponse(status, `[${provider}/${model}] ${errorMsg}`, credentials.retryAfter, credentials.retryAfterHuman);
       }
@@ -257,76 +275,155 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     }
 
-    // Use shared chatCore
-    const chatSettings = await getSettings();
-    const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
-    const result = await handleChatCore({
-      body: { ...body, model: `${provider}/${model}` },
-      modelInfo: { provider, model },
-      credentials: refreshedCredentials,
-      log,
-      clientRawRequest,
-      connectionId: credentials.connectionId,
-      userAgent,
-      apiKey,
-      ccFilterNaming: !!chatSettings.ccFilterNaming,
-      rtkEnabled: !!chatSettings.rtkEnabled,
-      headroomEnabled: !!chatSettings.headroomEnabled,
-      headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
-      headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
-      headroomTimeoutMs: chatSettings.headroomTimeoutMs,
-      cavemanEnabled: !!chatSettings.cavemanEnabled,
-      cavemanLevel: chatSettings.cavemanLevel || "full",
-      ponytailEnabled: !!chatSettings.ponytailEnabled,
-      ponytailLevel: chatSettings.ponytailLevel || "full",
-      pxpipeEnabled: !!chatSettings.pxpipeEnabled,
-      pxpipeMinChars: chatSettings.pxpipeMinChars,
-      pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
-      // Lazily warms the in-process module on first use; null when not installed (fail-open)
-      pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
-      onPxpipeEvent: appendPxpipeEvent,
-      providerThinking,
-      // Detect source format by endpoint + body
-      sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
-      onCredentialsRefreshed: async (newCreds) => {
-        await updateProviderCredentials(credentials.connectionId, {
-          ...newCreds,
-          existingProviderSpecificData: credentials.providerSpecificData,
-          testStatus: "active"
-        });
-      },
-      onRequestSuccess: async () => {
-        await clearAccountError(credentials.connectionId, credentials, model);
+    // Gate per-account (skip noauth / missing connectionId)
+    const connectionId = credentials.connectionId;
+    const isNoAuth = !connectionId || connectionId === "noauth";
+
+    let breakerName = null;
+    if (!isNoAuth) {
+      breakerName = buildAccountBreakerName({
+        provider,
+        connectionId,
+      });
+      getCircuitBreaker(breakerName, {
+        failureThreshold: 5,
+        resetTimeout: 30_000,
+        isFailure: (err) => shouldRecordBreakerFailure(err?.statusCode),
+      });
+      if (!canExecute(breakerName)) {
+        excludeConnectionIds.add(connectionId);
+        continue;
       }
+    }
+
+    const semaphoreKey = resolveAccountSemaphoreKey({
+      provider,
+      connectionId,
     });
-
-    if (result.success) return result.response;
-
-    // Antigravity 409/429: refresh live quota to get exact resetAt before locking
-    let quotaResetMs = null;
-    let resetsAtMs = result.resetsAtMs;
-    if (provider === "antigravity" && (result.status === 409 || result.status === 429)) {
-      quotaResetMs = await handleAntigravityQuotaError(
-        credentials.connectionId, result.status, model,
-        refreshedCredentials.accessToken, credentials.providerSpecificData
-      );
-      if (quotaResetMs) resetsAtMs = quotaResetMs;
+    const semaphoreMax = resolveAccountSemaphoreMaxConcurrency(refreshedCredentials);
+    let semaphoreRelease = () => {};
+    if (semaphoreKey && semaphoreMax != null) {
+      try {
+        semaphoreRelease = await acquire(semaphoreKey, {
+          maxConcurrency: semaphoreMax,
+          timeoutMs: 2000,
+        });
+      } catch (e) {
+        if (isSemaphoreCapacityError(e)) {
+          log.warn("AUTH", `Account ${credentials.connectionName} at capacity, trying fallback`);
+          excludeConnectionIds.add(connectionId);
+          continue;
+        }
+        throw e;
+      }
     }
 
-    // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
-    // Do not persist a modelLock_* for this path.
-    const shouldFallback = provider === "antigravity" && quotaResetMs
-      ? true
-      : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+    let holdSemaphore = false;
+    const releaseOnce = () => {
+      const release = semaphoreRelease;
+      semaphoreRelease = () => {};
+      release();
+    };
+    let streamOutcome = null;
 
-    if (shouldFallback) {
-      log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
+    try {
+      // Use shared chatCore
+      const chatSettings = await getSettings();
+      const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+      const result = await handleChatCore({
+        body: { ...body, model: `${provider}/${model}` },
+        modelInfo: { provider, model },
+        credentials: refreshedCredentials,
+        log,
+        clientRawRequest,
+        connectionId,
+        userAgent,
+        apiKey,
+        ccFilterNaming: !!chatSettings.ccFilterNaming,
+        rtkEnabled: !!chatSettings.rtkEnabled,
+        headroomEnabled: !!chatSettings.headroomEnabled,
+        headroomUrl: chatSettings.headroomUrl || DEFAULT_HEADROOM_URL,
+        headroomCompressUserMessages: !!chatSettings.headroomCompressUserMessages,
+        headroomTimeoutMs: chatSettings.headroomTimeoutMs,
+        cavemanEnabled: !!chatSettings.cavemanEnabled,
+        cavemanLevel: chatSettings.cavemanLevel || "full",
+        ponytailEnabled: !!chatSettings.ponytailEnabled,
+        ponytailLevel: chatSettings.ponytailLevel || "full",
+        pxpipeEnabled: !!chatSettings.pxpipeEnabled,
+        pxpipeMinChars: chatSettings.pxpipeMinChars,
+        pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
+        // Lazily warms the in-process module on first use; null when not installed (fail-open)
+        pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
+        onPxpipeEvent: appendPxpipeEvent,
+        providerThinking,
+        // Detect source format by endpoint + body
+        sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
+        onCredentialsRefreshed: async (newCreds) => {
+          await updateProviderCredentials(connectionId, {
+            ...newCreds,
+            existingProviderSpecificData: credentials.providerSpecificData,
+            testStatus: "active"
+          });
+        },
+        onRequestSuccess: async () => {
+          await clearAccountError(connectionId, credentials, model);
+        },
+        onStreamComplete: () => {
+          if (!streamOutcome) {
+            streamOutcome = "success";
+            if (breakerName) recordSuccess(breakerName);
+          }
+          releaseOnce();
+        },
+        onDisconnect: () => {
+          if (!streamOutcome) streamOutcome = "disconnect";
+          releaseOnce();
+        },
+      });
+
+      if (result.success) {
+        const contentType = result.response?.headers?.get?.("content-type") || "";
+        const isStreaming = body.stream === true || contentType.includes("text/event-stream");
+        if (isStreaming) {
+          holdSemaphore = true;
+          return result.response;
+        }
+        if (breakerName) recordSuccess(breakerName);
+        return result.response;
+      }
+
+      if (breakerName && shouldRecordBreakerFailure(result.status)) {
+        recordFailure(breakerName, { statusCode: result.status });
+      }
+
+      // Antigravity 409/429: refresh live quota to get exact resetAt before locking
+      let quotaResetMs = null;
+      let resetsAtMs = result.resetsAtMs;
+      if (provider === "antigravity" && (result.status === 409 || result.status === 429)) {
+        quotaResetMs = await handleAntigravityQuotaError(
+          connectionId, result.status, model,
+          refreshedCredentials.accessToken, credentials.providerSpecificData
+        );
+        if (quotaResetMs) resetsAtMs = quotaResetMs;
+      }
+
+      // Exhausted Antigravity model is blocked only in RAM cache until upstream resetAt.
+      // Do not persist a modelLock_* for this path.
+      const shouldFallback = provider === "antigravity" && quotaResetMs
+        ? true
+        : (await markAccountUnavailable(connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
+
+      if (shouldFallback) {
+        log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
+        excludeConnectionIds.add(connectionId);
+        lastError = result.error;
+        lastStatus = result.status;
+        continue;
+      }
+
+      return result.response;
+    } finally {
+      if (!holdSemaphore) releaseOnce();
     }
-
-    return result.response;
   }
 }
