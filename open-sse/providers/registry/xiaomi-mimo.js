@@ -45,6 +45,10 @@ export default {
     { id: "mimo-v2-flash", name: "MiMo V2 Flash" },
     { id: "mimo-v2.5-tts", name: "MiMo V2.5 TTS", kind: "tts" },
   ],
+  features: {
+    usage: true,
+    usageApikey: true,
+  },
   ttsConfig: {
     baseUrl: "https://api.xiaomimimo.com/v1/chat/completions",
     authType: "apikey",
