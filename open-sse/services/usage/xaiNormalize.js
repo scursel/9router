@@ -8,15 +8,14 @@ export function normalizeXaiUsage(result) {
 
   const quotas = { ...result.quotas };
 
-  // Prepaid is in cents on the wire. The dashboard groups by the suffix
-  // in the quota name (see QuotaTable formatQuotaUsage), so this must spell
-  // out Prepaid balance (USD) or it renders as a bare count.
+  // Prepaid is reported in the billing response's display units. The dashboard
+  // groups by the suffix in the quota name (see QuotaTable formatQuotaUsage),
+  // so this must spell out Prepaid balance (USD) or it renders as a bare count.
   const prepaid = quotas.Prepaid;
   if (prepaid) {
     delete quotas.Prepaid;
-    quotas["Prepaid balance (USD)"] = balance(num(prepaid.total, 0) / 100, prepaid.resetAt);
+    quotas["Prepaid balance (USD)"] = balance(num(prepaid.total, 0), prepaid.resetAt);
   }
-
   const config = result.rawConfig || {};
   const usagePercent = (() => {
     const rawPercent = config.creditUsagePercent ?? config.credit_usage_percent;

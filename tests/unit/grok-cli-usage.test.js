@@ -261,7 +261,7 @@ describe("getUsageForProvider(grok-cli)", () => {
       total: 100,
       remainingPercentage: 65,
     });
-    expect(usage.quotas.Prepaid).toMatchObject({
+    expect(usage.quotas["Prepaid balance (USD)"]).toMatchObject({
       used: 0,
       total: 12.5,
       remainingPercentage: 100,

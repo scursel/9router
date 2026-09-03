@@ -3,18 +3,18 @@ import { describe, expect, it } from "vitest";
 import { normalizeXaiUsage } from "open-sse/services/usage/xaiNormalize.js";
 
 describe("xAI/Grok USD normalization", () => {
-  it("converts the Prepaid cents balance to a USD quota", () => {
+  it("renames the Prepaid balance to a USD quota", () => {
     const out = normalizeXaiUsage({
       plan: "Grok Build",
       rawConfig: { creditUsagePercent: { val: 40 }, currentPeriod: { type: "USAGE_PERIOD_TYPE_WEEKLY" } },
       quotas: {
-        Prepaid: { used: 0, total: 2500, remainingPercentage: 100, resetAt: null, unlimited: false },
+        Prepaid: { used: 0, total: 12.5, remainingPercentage: 100, resetAt: null, unlimited: false },
       },
     });
 
     expect(out.quotas["Prepaid balance (USD)"]).toEqual({
       used: 0,
-      total: 25,
+      total: 12.5,
       remainingPercentage: 100,
       resetAt: null,
       unlimited: false,
