@@ -11,6 +11,9 @@
 - **Quota**: add usage and rate-limit tracking for Groq via `x-ratelimit-*` headers
 - **i18n**: complete Indonesian translation (1391 keys)
 
+- **Dashboard**: expandable account `lastError` on provider connection rows (click more/less; full message with pre-wrap)
+- **Dashboard**: show which combos reference each model on the provider detail page (layers chip, full list in title)
+
 ## Fixes
 - **Security**: close SSRF guard bypasses in `ssrfGuard.js` (alternate IPv6 encodings, hostname trailing dots, wildcard DNS resolution check, safe redirect handling) (#3714)
 - **Model markers**: strip the `[1m]` context marker Claude Code appends to model names (`claude-opus-5[1m]`) preventing model resolution failures (#3690)
