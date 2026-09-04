@@ -9,6 +9,7 @@ import CircuitBreakerBadge from "../components/CircuitBreakerBadge";
 
 export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
+  const [showFullError, setShowFullError] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
   const proxyDropdownRef = useRef(null);
 
@@ -179,9 +180,16 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             )}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
             {connection.lastError && connection.isActive !== false && (
-              <span className="max-w-full truncate text-xs text-red-500 sm:max-w-[300px]" title={connection.lastError}>
-                {connection.lastError}
-              </span>
+              <button
+                type="button"
+                onClick={() => setShowFullError((v) => !v)}
+                title={showFullError ? "Click to collapse" : connection.lastError}
+                aria-expanded={showFullError}
+                className="inline-flex max-w-full items-start gap-1 text-left text-xs text-red-500 sm:max-w-[300px]"
+              >
+                <span className={showFullError ? "whitespace-pre-wrap break-words" : "min-w-0 truncate"}>{connection.lastError}</span>
+                <span className="shrink-0 underline underline-offset-2 opacity-70">{showFullError ? "less" : "more"}</span>
+              </button>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
             {connection.globalPriority && (
