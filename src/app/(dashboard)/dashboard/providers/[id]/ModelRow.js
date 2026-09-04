@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import { CapacityBadges } from "@/shared/components";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix, comboNames = [] }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
@@ -26,8 +26,14 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <code className="max-w-[72vw] truncate rounded bg-sidebar px-1.5 py-0.5 font-mono text-xs text-text-muted sm:max-w-[360px]">{displayModel}</code>
-          <span className="flex min-w-0 items-center text-[9px] gap-1 pl-1">
+          <span className="flex min-w-0 flex-wrap items-center text-[9px] gap-1 pl-1">
             {model.name && <span className="truncate text-[9px] italic text-text-muted/70">{model.name}</span>}
+            {comboNames.length > 0 && (
+              <span className="inline-flex max-w-full items-center gap-0.5 rounded bg-primary/10 px-1 py-px font-mono text-[9px] text-primary" title={`Used in: ${comboNames.join(", ")}`}>
+                <span className="material-symbols-outlined text-[10px]">layers</span>
+                <span className="truncate">{comboNames.slice(0, 2).join(", ")}{comboNames.length > 2 ? ` +${comboNames.length - 2}` : ""}</span>
+              </span>
+            )}
             <CapacityBadges caps={caps} colorOverride="text-text-muted/70" size={12} />
           </span>
         </div>
@@ -99,4 +105,5 @@ ModelRow.propTypes = {
   onDisable: PropTypes.func,
   caps: PropTypes.object,
   thinkingSuffix: PropTypes.string,
+  comboNames: PropTypes.arrayOf(PropTypes.string),
 };

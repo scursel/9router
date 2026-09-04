@@ -74,6 +74,7 @@ export default function ProviderDetailPage() {
   const [liveModels, setLiveModels] = useState([]);
   const [kiloFreeModels, setKiloFreeModels] = useState([]);
   const [disabledModelIds, setDisabledModelIds] = useState([]);
+  const [combos, setCombos] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const [showAgRiskModal, setShowAgRiskModal] = useState(false);
   const [oneByOneRunning, setOneByOneRunning] = useState(false);
@@ -260,6 +261,27 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // ── combos index: model value (providerId/model) → combo names
+  const fetchCombos = useCallback(async () => {
+    try {
+      const res = await fetch("/api/combos", { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok) setCombos(data.combos || []);
+    } catch {}
+  }, []);
+  const comboNamesByValue = (() => {
+    const m = new Map();
+    for (const c of combos) for (const v of (c.models || [])) {
+      if (!m.has(v)) m.set(v, []);
+      m.get(v).push(c.name);
+    }
+    return m;
+  })();
+  const comboNamesFor = (candidates) => {
+    const seen = new Set(), out = [];
+    for (const v of candidates) for (const n of (comboNamesByValue.get(v) || [])) if (!seen.has(n)) { seen.add(n); out.push(n); }
+    return out;
+  };
   // Define callbacks BEFORE the useEffect that uses them
   const fetchAliases = useCallback(async () => {
     try {
@@ -460,7 +482,8 @@ export default function ProviderDetailPage() {
     fetchAliases();
     fetchCustomModels();
     fetchDisabledModels();
-  }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels]);
+    fetchCombos();
+  }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels, fetchCombos]);
 
   // Cursor's model availability is account-specific and changes frequently.
   // Load the active account's live catalog for the dashboard; the static
@@ -1092,6 +1115,7 @@ export default function ProviderDetailPage() {
           onDeleteCustomModel={(modelId) => handleDeleteCustomModel(modelId, "llm", providerStorageAlias)}
           connections={connections}
           isAnthropic={isAnthropicCompatible}
+          comboNamesFor={comboNamesFor}
         />
       );
     }
@@ -1138,6 +1162,7 @@ export default function ProviderDetailPage() {
             isFree={false}
             caps={getCaps(`${providerId}/${model.id}`)}
             thinkingSuffix={resolveThinkingSuffix(model.id)}
+            comboNames={comboNamesFor([model.fullModel, `${providerDisplayAlias}/${model.id}`, `${providerStorageAlias}/${model.id}`, `${providerId}/${model.id}`, ...(model.alias ? [model.alias] : [])])}
           />
         ))}
 
@@ -1164,6 +1189,7 @@ export default function ProviderDetailPage() {
               onDisable={() => handleDisableModel(model.id)}
               caps={getCaps(`${providerId}/${model.id}`)}
               thinkingSuffix={resolveThinkingSuffix(model.id)}
+              comboNames={comboNamesFor([`${providerDisplayAlias}/${model.id}`, `${providerStorageAlias}/${model.id}`, `${providerId}/${model.id}`, ...(existingAlias ? [existingAlias] : [])])}
             />
           );
         })}
