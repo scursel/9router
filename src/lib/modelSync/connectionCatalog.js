@@ -110,6 +110,16 @@ function modelsUrlFromBase(baseUrl) {
   return `${base}/models`;
 }
 
+// Fetcher types whose /models response is OpenAI-list shaped ({ data: [...] })
+// and safe for per-account catalog sync + free-tier classification.
+// openrouter-free / opencode-free are filter labels for suggested-models UI;
+// the upstream payload is still the standard OpenAI models list.
+export const SYNCABLE_MODELS_FETCHER_TYPES = new Set([
+  "openai",
+  "openrouter-free",
+  "opencode-free",
+]);
+
 export function resolveModelsUrl(connection) {
   // Per-account override first: custom nodes and Alibaba region hosts carry
   // their own baseUrl (often the full chat URL).
@@ -121,12 +131,17 @@ export function resolveModelsUrl(connection) {
   // modelsFetcher is the declarative models endpoint; transport.validateUrl is
   // the connection-test probe and must NOT drive catalog sync for providers
   // whose auth check is a POST (antigravity) or a chat probe.
-  // Only OpenAI-shaped listings are synced: other fetcher types (e.g.
-  // models.dev-shaped) have a different response shape and stay on the
-  // static seed instead of erroring every cycle.
+  // Skip non-list shapes (e.g. models.dev) — those stay on the static seed.
   const fetcher = provider?.modelsFetcher;
-  const url = fetcher?.type === "openai" && typeof fetcher?.url === "string" ? fetcher.url : null;
+  const url = SYNCABLE_MODELS_FETCHER_TYPES.has(fetcher?.type) && typeof fetcher?.url === "string"
+    ? fetcher.url
+    : null;
   if (url) return url;
+  // Fallback: OpenAI-compatible validateUrl that already points at /models.
+  const validateUrl = provider?.transport?.validateUrl;
+  if (typeof validateUrl === "string" && /\/models\/?$/i.test(validateUrl.trim())) {
+    return validateUrl.trim().replace(/\/$/, "");
+  }
   return null;
 }
 

@@ -21,6 +21,8 @@ export default {
     baseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
     validateUrl: "https://integrate.api.nvidia.com/v1/models",
   },
+  modelsFetcher: { url: "https://integrate.api.nvidia.com/v1/models", type: "openai" },
+  passthroughModels: true,
   models: [
     { id: "minimaxai/minimax-m2.7", name: "MiniMax M2.7" },
     { id: "minimaxai/minimax-m3", name: "MiniMax M3" },

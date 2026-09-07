@@ -143,6 +143,20 @@ describe("resolveModelsUrl", () => {
     const url = resolveModelsUrl({ provider: "bai", providerSpecificData: {} });
     expect(url).toMatch(/\/models$/);
   });
+
+  it("syncs openrouter-free and opencode-free fetcher types (OpenAI-shaped lists)", () => {
+    expect(resolveModelsUrl({ provider: "openrouter", providerSpecificData: {} }))
+      .toBe("https://openrouter.ai/api/v1/models");
+    expect(resolveModelsUrl({ provider: "opencode", providerSpecificData: {} }))
+      .toBe("https://opencode.ai/zen/v1/models");
+  });
+
+  it("syncs clinepass and nvidia model listings", () => {
+    expect(resolveModelsUrl({ provider: "clinepass", providerSpecificData: {} }))
+      .toBe("https://api.cline.bot/api/v1/models");
+    expect(resolveModelsUrl({ provider: "nvidia", providerSpecificData: {} }))
+      .toBe("https://integrate.api.nvidia.com/v1/models");
+  });
 });
 
 describe("normalizedModels", () => {

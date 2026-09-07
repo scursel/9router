@@ -21,6 +21,7 @@
 - **CLI**: export packed `.tgz` directly into workspace root instead of parent directory
 
 ## Enhanced
+- **Models**: sync OpenRouter/OpenCode/Kilo/ClinePass/NVIDIA catalogs so Import free works beyond OrcaRouter
 - **Providers**: Import free button on connections that expose free catalog models
 - **Usage**: resolve provider labels (registry name, custom node name, short Custom OpenAI id for deleted nodes)
 - **Usage**: add Usage by Provider and Usage by Combo views (only entries with traffic)

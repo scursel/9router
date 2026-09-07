@@ -95,6 +95,8 @@ Cannot (requires code, stays manual):
   surface.
 
 
+- `openrouter`, `opencode`, `kilocode`: same OpenAI-shaped `/models` list (fetcher type `openrouter-free` / `opencode-free`); free models classified via zero price or `:free`/`-free` id suffix — **Import free** appears once synced.
+- `clinepass`, `nvidia`: `/models` listings synced like other OpenAI-compatible hosts.
 - `bai`, `orcarouter`, `dahl`: OpenAI-compatible gateways, Bearer auth,
   `modelsFetcher` + `validateUrl` on `/v1/models`, `passthroughModels`,
   static seed fallback (orcarouter/dahl; b.ai's list needs a key so it

@@ -43,6 +43,9 @@ export default {
     { id: "cline-pass/qwen3.7-max", name: "Qwen3.7 Max (ClinePass)" },
     { id: "cline-pass/qwen3.7-plus", name: "Qwen3.7 Plus (ClinePass)" },
   ],
+  // Same OpenAI-shaped list OpenRouter exposes; free ids carry the :free suffix.
+  modelsFetcher: { url: "https://api.cline.bot/api/v1/models", type: "openai" },
+  passthroughModels: true,
   oauth: {
     appBaseUrl: "https://app.cline.bot",
     apiBaseUrl: "https://api.cline.bot",
