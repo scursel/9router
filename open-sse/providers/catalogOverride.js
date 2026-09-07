@@ -14,6 +14,7 @@ export const CATALOG_FILE = path.join(DATA_DIR, "model-catalog.json");
 export const CATALOG_RAW_FILE = path.join(DATA_DIR, "model-catalog-raw.json");
 
 const EMPTY = { models: {}, providers: {}, costs: {} };
+const TEST_CACHE_MTIME = -2; // sentinel: skip disk reload (see __setCatalogCacheForTests)
 let cache = EMPTY;
 let cachedMtime = -1;
 
@@ -25,6 +26,7 @@ function baseId(model) {
 }
 
 function load() {
+  if (cachedMtime === TEST_CACHE_MTIME) return cache;
   let mtime;
   try {
     mtime = fs.statSync(CATALOG_FILE).mtimeMs;
@@ -61,15 +63,33 @@ export function getCatalogLimits(provider, model) {
 // Tier precedence #2: per-model cost from models.dev, keyed by 9router
 // provider + base model id. Only consulted when the account's own /models
 // listing left the tier unknown — never overrides provider-reported prices.
+//
+// When the provider itself has no cost row, fall back to the OpenRouter index
+// (same base id). That keeps gateway/reseller models priced consistently.
 export function getCatalogCost(provider, model) {
-  const byProvider = provider && load().costs?.[provider];
-  if (!byProvider) return null;
-  return byProvider[model] || byProvider[baseId(model)] || null;
+  const costs = load().costs || {};
+  const byProvider = provider && costs[provider];
+  if (byProvider) {
+    const hit = byProvider[model] || byProvider[baseId(model)];
+    if (hit) return hit;
+  }
+  if (provider === "openrouter") return null;
+  const openrouter = costs.openrouter;
+  if (!openrouter) return null;
+  return openrouter[model] || openrouter[baseId(model)] || null;
 }
 
 // Force a re-read on the next lookup (called right after a sync writes the file).
 export function invalidateCatalog() {
   cachedMtime = -1;
+}
+
+// Test-only: inject a parsed catalog without touching disk.
+export function __setCatalogCacheForTests(next) {
+  cache = next && typeof next === "object"
+    ? { models: next.models || {}, providers: next.providers || {}, costs: next.costs || {} }
+    : EMPTY;
+  cachedMtime = TEST_CACHE_MTIME;
 }
 
 // Hand the reader to capabilities.js. That module is bundled into the browser

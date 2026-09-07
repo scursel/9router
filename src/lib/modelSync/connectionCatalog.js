@@ -18,7 +18,7 @@ function toNumber(value) {
 
 // Precedence (documented in docs/MODEL_SYNC_CATALOG.md):
 //  1. provider-reported price (pricing.prompt/completion, input_price/output_price)
-//  2. models.dev price/capability overlay (matched by provider+model in route layer)
+//  2. models.dev overlay in route layer (provider cost, else OpenRouter fallback)
 //  3. explicit markers: `:free` / `-free` suffix or free/is_free field
 //  4. curated per-provider rules (ORCAROUTER_FREE_IDS below)
 //  5. unknown — never default to paid on missing data

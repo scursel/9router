@@ -44,6 +44,9 @@ const PROVIDER_ALIASES = {
 // as tier precedence #2 (after the provider's own price, before :free markers).
 // Matches the sync in connectionCatalog.js: only fills tiers the provider left
 // unknown, never overrides provider-reported prices.
+//
+// `openrouter` is always indexed and doubles as the universal fallback when a
+// provider has no cost of its own (see getCatalogCost).
 export const COST_PROVIDERS = {
   "orcarouter": ["orcarouter"],
   "opencode-go": ["opencode-go"],
@@ -52,6 +55,7 @@ export const COST_PROVIDERS = {
   "alims-intl": ["alibaba"],
   "alitp-intl": ["alibaba-token-plan"],
   "opencode": ["opencode"],
+  "openrouter": ["openrouter"],
 };
 
 let state = { running: false, lastSync: null, lastError: null, lastResult: null, etag: null };
@@ -92,7 +96,31 @@ function slim(catalog) {
   return out;
 }
 
-function buildCosts(catalog) {
+function isZeroCost(entry) {
+  if (!entry) return true;
+  const inZero = entry.input == null || entry.input === 0;
+  const outZero = entry.output == null || entry.output === 0;
+  return inZero && outZero;
+}
+
+function isPaidCost(entry) {
+  if (!entry) return false;
+  return (entry.input != null && entry.input > 0) || (entry.output != null && entry.output > 0);
+}
+
+function putCost(byModel, modelId, cost) {
+  const id = baseId(modelId);
+  if (!id) return;
+  const next = { input: cost.input ?? null, output: cost.output ?? null };
+  const prev = byModel[id];
+  // Prefer a paid row over a free/:free zero when several OpenRouter ids
+  // collapse to the same base (e.g. llama-4-maverick vs llama-4-maverick:free).
+  if (!prev || (isZeroCost(prev) && isPaidCost(next))) {
+    byModel[id] = next;
+  }
+}
+
+export function buildCosts(catalog) {
   // { 9routerProvider: { baseModelId: { input, output } } } — costs only, so
   // the file stays small even though every models.dev entry is indexed.
   const costs = {};
@@ -102,9 +130,7 @@ function buildCosts(catalog) {
       for (const [modelId, model] of Object.entries(catalog[upstreamId]?.models || {})) {
         const cost = model?.cost;
         if (!cost || (cost.input === undefined && cost.output === undefined)) continue;
-        const id = baseId(modelId);
-        if (!id || byModel[id]) continue;
-        byModel[id] = { input: cost.input ?? null, output: cost.output ?? null };
+        putCost(byModel, modelId, cost);
       }
     }
     if (Object.keys(byModel).length) costs[provider] = byModel;

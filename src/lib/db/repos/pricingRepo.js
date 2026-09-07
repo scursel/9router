@@ -48,12 +48,42 @@ export async function getPricing() {
   return merged;
 }
 
+function pricingFromCatalogCost(cost) {
+  if (!cost || typeof cost !== "object") return null;
+  const input = cost.input == null ? null : Number(cost.input);
+  const output = cost.output == null ? null : Number(cost.output);
+  const hasInput = Number.isFinite(input);
+  const hasOutput = Number.isFinite(output);
+  if (!hasInput && !hasOutput) return null;
+  const inRate = hasInput ? input : 0;
+  const outRate = hasOutput ? output : 0;
+  return {
+    input: inRate,
+    output: outRate,
+    // Catalog only ships input/output; reuse input for cache hits/writes and
+    // output for reasoning so calculateCostFromTokens stays well-defined.
+    cached: inRate,
+    reasoning: outRate,
+    cache_creation: inRate,
+  };
+}
+
 export async function getPricingForModel(provider, model) {
   if (!model) return null;
   const userPricing = await getUserPricing();
   if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
   const { getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
-  return resolveConst(provider, model);
+  const resolved = resolveConst(provider, model);
+  if (resolved) return resolved;
+
+  // Static tables miss → models.dev / OpenRouter catalog (provider first, then
+  // universal OpenRouter fallback inside getCatalogCost).
+  try {
+    const { getCatalogCost } = await import("open-sse/providers/catalogOverride.js");
+    return pricingFromCatalogCost(getCatalogCost(provider, model));
+  } catch {
+    return null;
+  }
 }
 
 // Atomic merge inside transaction (per-provider read-modify-write)

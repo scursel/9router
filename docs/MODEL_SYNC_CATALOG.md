@@ -37,10 +37,15 @@ ideas. This implementation is native to 9Router: no OmniRoute code was copied.
 
 1. Provider-reported price (`pricing.prompt/completion`).
 2. models.dev cost overlay (`COST_PROVIDERS` in `src/lib/modelCatalog/sync.js`,
-   read via `getCatalogCost`) — fills `unknown` tiers only.
+   read via `getCatalogCost`) — fills `unknown` tiers only. When the provider
+   has no cost row, **OpenRouter's models.dev prices** are used as the
+   universal fallback (same base model id; paid beats `:free` zeros).
 3. Explicit markers: `:free`/`-free` suffix, `free`/`is_free` flag.
 4. Curated per-provider rules (currently only `orcarouter/free`).
 5. `unknown` — missing price data is never called paid.
+
+Usage cost estimation (`getPricingForModel`) follows the same idea: static
+tables first, then the catalog/OpenRouter fallback when nothing matches.
 
 Per-request pricing (`pricing.request` with no token prices, e.g. image
 models) classifies as `credits`. Curated classifications show a "may change"
