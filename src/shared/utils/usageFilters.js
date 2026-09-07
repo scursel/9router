@@ -10,7 +10,7 @@ export function normalizeProviderId(value) {
 /** True when a usage row belongs to the selected combo's member list. */
 export function usageItemMatchesCombo(item, combo) {
   if (!combo?.models?.length) return false;
-  const itemProvider = normalizeProviderId(item?.provider);
+  const itemProvider = normalizeProviderId(item?.providerId || item?.provider);
   const itemModel = String(item?.rawModel || item?.model || "").trim();
   if (!itemModel) return false;
 
