@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { FREE_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
+import { filterUsageMap, normalizeProviderId } from "@/shared/utils/usageFilters";
 
 // Keep providers without serviceKinds (default LLM) or with "llm" in serviceKinds
 function isLLMProvider(id) {
@@ -212,6 +213,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const [fetching, setFetching] = useState(false);
   const [tableView, setTableView] = useState("model");
   const [viewMode, setViewMode] = useState("costs");
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [comboFilter, setComboFilter] = useState("all");
+  const [combos, setCombos] = useState([]);
   const [providers, setProviders] = useState([]);
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
@@ -225,8 +229,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     Promise.all([
       fetch("/api/providers").then((r) => r.ok ? r.json() : null),
       fetch("/api/provider-nodes").then((r) => r.ok ? r.json() : null),
+      fetch("/api/combos").then((r) => r.ok ? r.json() : null),
     ])
-      .then(([d, nodesData]) => {
+      .then(([d, nodesData, combosData]) => {
         // Build node name lookup for custom providers
         const nodeNameMap = {};
         for (const node of (nodesData?.nodes || [])) {
@@ -247,9 +252,26 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
           .filter((p) => p.noAuth && !seen.has(p.id) && isLLMProvider(p.id))
           .map((p) => ({ provider: p.id, name: p.name }));
         setProviders([...unique, ...noAuthProviders]);
+        const list = Array.isArray(combosData)
+          ? combosData
+          : (Array.isArray(combosData?.combos) ? combosData.combos : []);
+        setCombos(list.filter((c) => c?.name && Array.isArray(c.models) && c.models.length > 0));
       })
       .catch(() => {});
   }, []);
+
+  const providerFilterOptions = useMemo(() => {
+    const ids = new Set();
+    for (const p of providers) {
+      if (p?.provider) ids.add(p.provider);
+    }
+    for (const bucket of [stats?.byModel, stats?.byAccount, stats?.byApiKey, stats?.byEndpoint]) {
+      for (const row of Object.values(bucket || {})) {
+        if (row?.provider) ids.add(normalizeProviderId(row.provider) || row.provider);
+      }
+    }
+    return [...ids].sort((a, b) => a.localeCompare(b));
+  }, [providers, stats]);
 
   // Fetch filtered stats via REST when period changes
   useEffect(() => {
@@ -316,17 +338,26 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
+  const filterOpts = useMemo(
+    () => ({ providerFilter, comboFilter, combos }),
+    [providerFilter, comboFilter, combos],
+  );
+
   // Compute active table data
   const activeTableConfig = useMemo(() => {
     if (!stats) return null;
+    const emptyForFilter = (providerFilter !== "all" || comboFilter !== "all")
+      ? "No usage matches the selected provider/combo filters."
+      : null;
     switch (tableView) {
       case "model": {
         const pendingMap = stats.pending?.byModel || {};
+        const filtered = filterUsageMap(stats.byModel, filterOpts);
         return {
           columns: MODEL_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byModel, pendingMap, sortBy, sortOrder), "rawModel"),
+          groupedData: groupDataByKey(sortData(filtered, pendingMap, sortBy, sortOrder), "rawModel"),
           storageKey: "usage-stats:expanded-models",
-          emptyMessage: "No usage recorded yet.",
+          emptyMessage: emptyForFilter || "No usage recorded yet.",
           renderSummaryCells: (group) => (
             <>
               <td className="px-6 py-3 text-text-muted">—</td>
@@ -355,11 +386,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             }
           });
         }
+        const filtered = filterUsageMap(stats.byAccount, filterOpts);
         return {
           columns: ACCOUNT_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byAccount, pendingMap, sortBy, sortOrder), "accountName"),
+          groupedData: groupDataByKey(sortData(filtered, pendingMap, sortBy, sortOrder), "accountName"),
           storageKey: "usage-stats:expanded-accounts",
-          emptyMessage: "No account-specific usage recorded yet.",
+          emptyMessage: emptyForFilter || "No account-specific usage recorded yet.",
           renderSummaryCells: (group) => (
             <>
               <td className="px-6 py-3 text-text-muted">—</td>
@@ -380,11 +412,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         };
       }
       case "apiKey": {
+        const filtered = filterUsageMap(stats.byApiKey, filterOpts);
         return {
           columns: API_KEY_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byApiKey, {}, sortBy, sortOrder), "keyName"),
+          groupedData: groupDataByKey(sortData(filtered, {}, sortBy, sortOrder), "keyName"),
           storageKey: "usage-stats:expanded-apikeys",
-          emptyMessage: "No API key usage recorded yet.",
+          emptyMessage: emptyForFilter || "No API key usage recorded yet.",
           renderSummaryCells: (group) => (
             <>
               <td className="px-6 py-3 text-text-muted">—</td>
@@ -406,11 +439,12 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       }
       case "endpoint":
       default: {
+        const filtered = filterUsageMap(stats.byEndpoint, filterOpts);
         return {
           columns: ENDPOINT_COLUMNS,
-          groupedData: groupDataByKey(sortData(stats.byEndpoint, {}, sortBy, sortOrder), "endpoint"),
+          groupedData: groupDataByKey(sortData(filtered, {}, sortBy, sortOrder), "endpoint"),
           storageKey: "usage-stats:expanded-endpoints",
-          emptyMessage: "No endpoint usage recorded yet.",
+          emptyMessage: emptyForFilter || "No endpoint usage recorded yet.",
           renderSummaryCells: (group) => (
             <>
               <td className="px-6 py-3 text-text-muted">—</td>
@@ -431,7 +465,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         };
       }
     }
-  }, [stats, tableView, sortBy, sortOrder]);
+  }, [stats, tableView, sortBy, sortOrder, filterOpts, providerFilter, comboFilter]);
 
   if (!stats && !loading) return <div className="text-text-muted">Failed to load usage statistics.</div>;
 
@@ -486,16 +520,54 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Table with dropdown selector */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <select
-            value={tableView}
-            onChange={(e) => setTableView(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
-            style={{ colorScheme: 'auto' }}
-          >
-            {TABLE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <select
+              value={tableView}
+              onChange={(e) => setTableView(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
+              style={{ colorScheme: "auto" }}
+              aria-label="Usage table grouping"
+            >
+              {TABLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
+              style={{ colorScheme: "auto" }}
+              aria-label="Filter usage by provider"
+            >
+              <option value="all">All providers</option>
+              {providerFilterOptions.map((id) => (
+                <option key={id} value={id}>
+                  {AI_PROVIDERS[id]?.name || providers.find((p) => p.provider === id)?.nodeName || id}
+                </option>
+              ))}
+            </select>
+            <select
+              value={comboFilter}
+              onChange={(e) => setComboFilter(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-main focus:outline-none focus:ring-2 focus:ring-primary/50 sm:w-auto"
+              style={{ colorScheme: "auto" }}
+              aria-label="Filter usage by combo"
+            >
+              <option value="all">All combos</option>
+              {combos.map((combo) => (
+                <option key={combo.name} value={combo.name}>{combo.name}</option>
+              ))}
+            </select>
+            {(providerFilter !== "all" || comboFilter !== "all") && (
+              <button
+                type="button"
+                onClick={() => { setProviderFilter("all"); setComboFilter("all"); }}
+                className="rounded-lg px-2 py-1.5 text-xs font-medium text-text-muted hover:bg-bg-hover hover:text-text"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex">
             <button
               onClick={() => setViewMode("costs")}
