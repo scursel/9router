@@ -24,7 +24,6 @@ import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
-import MigrationPanel from "./components/MigrationPanel";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
 import { useCircuitBreakers } from "@/shared/hooks/useCircuitBreakers";
@@ -414,9 +413,6 @@ export default function ProvidersPage() {
           </p>
         </div>
       )}
-
-      {/* Custom → native migration suggestions (exact host match only) */}
-      <MigrationPanel />
 
       {/* Custom Providers (OpenAI/Anthropic Compatible) — dynamic */}
       <div className="flex flex-col gap-4">
