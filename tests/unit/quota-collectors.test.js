@@ -10,7 +10,6 @@ import { getOpenRouterUsage, parseOpenRouter } from "../../open-sse/services/usa
 import { getCommandCodeUsage, parseCommandCode, commandCodeMonthlyTotal } from "../../open-sse/services/usage/commandcode.js";
 import { getXiaomiMimoUsage, parseMimo } from "../../open-sse/services/usage/xiaomiMimo.js";
 import { getClinePassUsage, parseCline } from "../../open-sse/services/usage/clinepass.js";
-import { getOpencodeGoUsage, parseOpenCodeGo } from "../../open-sse/services/usage/opencodeGo.js";
 import { USAGE_SUPPORTED_PROVIDERS, USAGE_APIKEY_PROVIDERS } from "../../src/shared/constants/providers.js";
 
 function jsonResponse(body, status = 200) {
@@ -350,63 +349,8 @@ describe("Quota Collectors - Unit Tests", () => {
     });
   });
 
-  describe("OpenCode Go Usage Collector", () => {
-    it("returns error when API key is missing", async () => {
-      const res = await getOpencodeGoUsage(null);
-      expect(res).toEqual({
-        message: "OpenCode Go API key not available.",
-        quotas: {},
-      });
-    });
-
-    it("clamps percent at 100 when API returns > 100", () => {
-      const body = {
-        usage: {
-          rolling: { percent: 125, resetsAt: "2026-08-29T18:00:00Z" },
-          weekly: { percent: 40, resetsAt: null },
-        },
-      };
-
-      const parsed = parseOpenCodeGo(body);
-
-      expect(parsed.quotas["Rolling (5h)"]).toEqual({
-        used: 100,
-        total: 100,
-        remainingPercentage: 0,
-        resetAt: "2026-08-29T18:00:00.000Z",
-        unlimited: false,
-      });
-
-      expect(parsed.quotas["Weekly"]).toEqual({
-        used: 40,
-        total: 100,
-        remainingPercentage: 60,
-        resetAt: null,
-        unlimited: false,
-      });
-    });
-
-    it("reuses cache within 45s for the same API key", async () => {
-      proxyAwareFetch.mockResolvedValue(
-        jsonResponse({
-          usage: {
-            rolling: { percent: 10 },
-          },
-        }),
-      );
-
-      const uniqueKey = "og-key-cache-test-" + Date.now();
-
-      const res1 = await getOpencodeGoUsage(uniqueKey);
-      expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
-      expect(res1.quotas["Rolling (5h)"].used).toBe(10);
-
-      // Second call immediately after should hit cache without calling proxyAwareFetch again
-      const res2 = await getOpencodeGoUsage(uniqueKey);
-      expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
-      expect(res2).toEqual(res1);
-    });
-  });
+  // OpenCode Go usage collector: replaced by official open-sse/services/usage/opencode-go.js
+  // (covered by tests/unit/opencode-go-usage.test.js).
 
   describe("getUsageForProvider integration with USAGE_HANDLERS", () => {
     it("routes openrouter via getUsageForProvider", async () => {
