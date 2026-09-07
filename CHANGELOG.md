@@ -21,6 +21,7 @@
 - **CLI**: export packed `.tgz` directly into workspace root instead of parent directory
 
 ## Enhanced
+- **Providers**: Import free button on connections that expose free catalog models
 - **Usage**: resolve provider labels (registry name, custom node name, short Custom OpenAI id for deleted nodes)
 - **Usage**: add Usage by Provider and Usage by Combo views (only entries with traffic)
 - **Pricing**: when a model has no known price, fall back to OpenRouter/models.dev rates (tier + usage cost)

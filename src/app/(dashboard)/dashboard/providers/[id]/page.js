@@ -84,6 +84,7 @@ export default function ProviderDetailPage() {
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
   const [importingQoderModels, setImportingQoderModels] = useState(false);
+  const [importingFreeConnectionId, setImportingFreeConnectionId] = useState(null);
   const [providerUsage24h, setProviderUsage24h] = useState(null);
   const { copied, copy } = useCopyToClipboard();
 
@@ -613,6 +614,52 @@ export default function ProviderDetailPage() {
     }
   };
 
+  // Import only free-tier models from a connection's synced catalog into Available Models.
+  const handleImportFreeModels = async (connection) => {
+    if (!connection?.id || importingFreeConnectionId) return;
+    const freeModels = (connection.modelCatalog?.models || []).filter(
+      (m) => m?.id && m.availability !== "unavailable" && m.tier === "free",
+    );
+    if (freeModels.length === 0) {
+      alert(translate("No free models in this account's catalog"));
+      return;
+    }
+
+    setImportingFreeConnectionId(connection.id);
+    try {
+      let importedCount = 0;
+      for (const model of freeModels) {
+        let modelId = String(model.id).trim();
+        if (!modelId) continue;
+        if (modelId.startsWith(`${providerStorageAlias}/`)) {
+          modelId = modelId.slice(providerStorageAlias.length + 1);
+        } else if (modelId.startsWith(`${providerId}/`)) {
+          modelId = modelId.slice(providerId.length + 1);
+        }
+        const kind = ["image", "embedding", "tts", "stt"].includes(model.kind) ? model.kind : "llm";
+        const alreadyExists = customModels.some(
+          (entry) => entry.providerAlias === providerStorageAlias
+            && entry.id === modelId
+            && (entry.kind || entry.type || "llm") === kind,
+        ) || Object.values(modelAliases).includes(`${providerStorageAlias}/${modelId}`);
+        if (alreadyExists) continue;
+        await handleAddCustomModel(modelId, kind, providerStorageAlias);
+        importedCount += 1;
+      }
+
+      if (importedCount === 0) {
+        alert(translate("All free models already exist, no new models added"));
+      } else {
+        alert(translate("Successfully added") + ` ${importedCount} ` + translate("free models"));
+      }
+    } catch (error) {
+      console.log("Error importing free models:", error);
+      alert(translate("Error fetching models") + ": " + (error?.message || error));
+    } finally {
+      setImportingFreeConnectionId(null);
+    }
+  };
+
   // Fetch Qoder model list and automatically add to available models
   const handleImportQoderModels = async () => {
     if (importingQoderModels) return;
@@ -1055,6 +1102,8 @@ export default function ProviderDetailPage() {
                 }}
                 onDelete={() => handleDelete(conn.id)}
                 onCatalogSynced={fetchConnections}
+                onImportFreeModels={() => handleImportFreeModels(conn)}
+                importingFreeModels={importingFreeConnectionId === conn.id}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
             </div>

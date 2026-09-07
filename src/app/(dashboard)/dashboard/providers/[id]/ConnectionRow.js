@@ -7,7 +7,7 @@ import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 import CircuitBreakerBadge from "../components/CircuitBreakerBadge";
 
-export default function ConnectionRow({ connection, affectedCombos = [], proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null, onCatalogSynced = null }) {
+export default function ConnectionRow({ connection, affectedCombos = [], proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null, onCatalogSynced = null, onImportFreeModels = null, importingFreeModels = false }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [showFullError, setShowFullError] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
@@ -295,6 +295,20 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
               {creditsCount > 0 && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-300" title="Models billed per request (e.g. image), not token-priced">{creditsCount} per-req</span>}
               {paidCount > 0 && <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[11px] text-sky-700 dark:text-sky-300">{paidCount} paid</span>}
               {unknownCount > 0 && <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[11px] text-text-muted">{unknownCount} unknown price</span>}
+              {freeCount > 0 && typeof onImportFreeModels === "function" && (
+                <button
+                  type="button"
+                  onClick={onImportFreeModels}
+                  disabled={importingFreeModels}
+                  className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300"
+                  title={`Add the ${freeCount} free model${freeCount === 1 ? "" : "s"} from this catalog to Available Models`}
+                >
+                  <span className={`material-symbols-outlined text-[13px]${importingFreeModels ? " animate-spin" : ""}`}>
+                    {importingFreeModels ? "progress_activity" : "download"}
+                  </span>
+                  {importingFreeModels ? "Importing…" : "Import free"}
+                </button>
+              )}
             </div>
           )}
           {catalog && unavailableModels.length > 0 && (
@@ -332,6 +346,19 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
                         {label}
                       </button>
                     ))}
+                    {freeCount > 0 && typeof onImportFreeModels === "function" && (
+                      <button
+                        type="button"
+                        onClick={onImportFreeModels}
+                        disabled={importingFreeModels}
+                        className="ml-auto inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-500/25 disabled:opacity-50 dark:text-emerald-300"
+                      >
+                        <span className={`material-symbols-outlined text-[13px]${importingFreeModels ? " animate-spin" : ""}`}>
+                          {importingFreeModels ? "progress_activity" : "download"}
+                        </span>
+                        {importingFreeModels ? "Importing…" : `Import ${freeCount} free`}
+                      </button>
+                    )}
                   </div>
                   {curatedHasWarning && (
                     <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -481,6 +508,8 @@ ConnectionRow.propTypes = {
   onToggleActive: PropTypes.func.isRequired,
   onUpdateProxy: PropTypes.func,
   onCatalogSynced: PropTypes.func,
+  onImportFreeModels: PropTypes.func,
+  importingFreeModels: PropTypes.bool,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   oneByOneStatus: PropTypes.shape({
