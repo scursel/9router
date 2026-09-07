@@ -32,6 +32,13 @@ describe("getCapabilitiesForModel", () => {
     }
   });
 
+  it("reports Claude Fable 5.1 as a permanent adaptive-thinking model", () => {
+    expect(getCapabilitiesForModel("claude", "claude-fable-5-1")).toMatchObject({
+      ...claudeSonnet5Expected,
+      thinkingCanDisable: false,
+    });
+  });
+
   it("reports Kiro Claude Opus 4.8 as a 1M context model", () => {
     expect(getCapabilitiesForModel("kiro", "claude-opus-4.8").contextWindow).toBe(1000000);
     expect(getCapabilitiesForModel("kiro", "anthropic/claude-opus-4.8").contextWindow).toBe(1000000);
@@ -56,10 +63,11 @@ describe("getCapabilitiesForModel", () => {
     expect(getCapabilitiesForModel("kiro", "gpt-5.6-sol-thinking-agentic")).toMatchObject(kiroGpt56Expected);
   });
 
-  it("reports all muse-spark-1.2 variants with 1M context window and 128k output", () => {
+  it("reports all muse-spark variants with vision, 1M context and 128k output", () => {
     const expected = {
       contextWindow: 1048576,
       maxOutput: 131072,
+      vision: true,
       reasoning: true,
       thinkingFormat: "openai",
     };
@@ -67,11 +75,23 @@ describe("getCapabilitiesForModel", () => {
       "muse-spark-1.2",
       "muse-spark-1.2-contributor",
       "muse-spark-1.2-contributor-free",
+      "muse-spark-1.3-contributor-free",
       "meta/muse-spark-1.2-contributor",
       "ocg/muse-spark-1.2-contributor-free",
     ]) {
       expect(getCapabilitiesForModel("opencode", model)).toMatchObject(expected);
       expect(getCapabilitiesForModel("orcarouter", model)).toMatchObject(expected);
     }
+  });
+
+  it("reports Codex GPT 6.0 Astra as a vision and thinking capable model", () => {
+    expect(getCapabilitiesForModel("codex", "gpt-6-astra")).toMatchObject({
+      vision: true,
+      reasoning: true,
+      search: true,
+      thinkingFormat: "openai",
+      contextWindow: 272000,
+      maxOutput: 128000,
+    });
   });
 });
