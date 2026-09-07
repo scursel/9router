@@ -84,7 +84,16 @@ export default function ProviderDetailPage() {
   const [oneByOneSummary, setOneByOneSummary] = useState(null);
   const stopOneByOneRef = useRef(false);
   const [importingQoderModels, setImportingQoderModels] = useState(false);
+  const [providerUsage24h, setProviderUsage24h] = useState(null);
   const { copied, copy } = useCopyToClipboard();
+
+  const formatTokenCount = (n) => {
+    const v = Number(n) || 0;
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
+    return String(Math.round(v));
+  };
+  const formatUsd = (n) => `~$${(Number(n) || 0).toFixed(4)}`;
 
   const AG_RISK_STORAGE_KEY = "ag_risk_confirmed";
 
@@ -484,6 +493,26 @@ export default function ProviderDetailPage() {
     fetchDisabledModels();
     fetchCombos();
   }, [fetchConnections, fetchAliases, fetchCustomModels, fetchDisabledModels, fetchCombos]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/usage/stats?period=24h", { cache: "no-store" });
+        if (!res.ok) return;
+        const stats = await res.json();
+        if (cancelled) return;
+        const byProvider = stats?.byProvider || {};
+        // Usage rows key by provider id; also try alias in case older rows used it.
+        const alias = getProviderAlias(providerId);
+        const bucket = byProvider[providerId] || byProvider[alias] || null;
+        setProviderUsage24h(bucket || { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 });
+      } catch {
+        if (!cancelled) setProviderUsage24h(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [providerId, connections.length]);
 
   // Cursor's model availability is account-specific and changes frequently.
   // Load the active account's live catalog for the dashboard; the static
@@ -1025,6 +1054,7 @@ export default function ProviderDetailPage() {
                   setShowEditModal(true);
                 }}
                 onDelete={() => handleDelete(conn.id)}
+                onCatalogSynced={fetchConnections}
                 oneByOneStatus={oneByOneResults[conn.id] || null}
               />
             </div>
@@ -1390,6 +1420,33 @@ export default function ProviderDetailPage() {
             </a>
           )}
         </div>
+      )}
+
+      {providerUsage24h && (
+        <Card>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold">Last 24 hours</h2>
+              <p className="text-xs text-text-muted">Local usage for this provider (estimated cost from token pricing)</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 sm:gap-6">
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-text-muted">Requests</p>
+                <p className="truncate text-lg font-semibold tabular-nums">{providerUsage24h.requests || 0}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-text-muted">Spent</p>
+                <p className="truncate text-lg font-semibold tabular-nums text-warning">{formatUsd(providerUsage24h.cost)}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-text-muted">Tokens</p>
+                <p className="truncate text-lg font-semibold tabular-nums" title={`in ${providerUsage24h.promptTokens || 0} · out ${providerUsage24h.completionTokens || 0}`}>
+                  {formatTokenCount((providerUsage24h.promptTokens || 0) + (providerUsage24h.completionTokens || 0))}
+                </p>
+              </div>
+            </div>
+          </div>
+        </Card>
       )}
 
       {isCompatible && providerNode && (

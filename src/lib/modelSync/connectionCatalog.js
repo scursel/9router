@@ -16,7 +16,7 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Precedence (documented):
+// Precedence (documented in docs/MODEL_SYNC_CATALOG.md):
 //  1. provider-reported price (pricing.prompt/completion, input_price/output_price)
 //  2. models.dev price/capability overlay (matched by provider+model in route layer)
 //  3. explicit markers: `:free` / `-free` suffix or free/is_free field
@@ -24,16 +24,38 @@ function toNumber(value) {
 //  5. unknown — never default to paid on missing data
 const ORCAROUTER_FREE_IDS = new Set(["orcarouter/free"]);
 
-function isZeroPrice(value) {
-  if (typeof value === "number") return value === 0;
-  if (typeof value !== "string") return false;
-  if (value.trim() === "") return false;
-  const n = Number(value);
-  return Number.isFinite(n) && n === 0;
-}
-
 export function classifyTier(row, { providerId = null } = {}) {
   const id = String(row?.id ?? row?.model ?? row?.name ?? "");
+  const promptRaw = row?.pricing?.prompt ?? row?.input_price;
+  const completionRaw = row?.pricing?.completion ?? row?.output_price;
+  const hasPromptField = promptRaw !== undefined;
+  const hasCompletionField = completionRaw !== undefined;
+  const hasRequest = row?.pricing?.request !== undefined;
+  const p = hasPromptField ? toNumber(promptRaw) : null;
+  const c = hasCompletionField ? toNumber(completionRaw) : null;
+
+  if (hasPromptField || hasCompletionField || hasRequest) {
+    // Per-request only (image-style) → credits.
+    if (hasRequest && !hasPromptField && !hasCompletionField) {
+      return { tier: "credits", tierSource: "provider-price" };
+    }
+
+    const anyPositive = (p !== null && p > 0) || (c !== null && c > 0);
+    if (anyPositive) {
+      return { tier: "paid", tierSource: "provider-price" };
+    }
+
+    const anyZero = p === 0 || c === 0;
+    if (anyZero) {
+      // Zero token side(s) plus a per-request fee is credits, not free.
+      if (hasRequest) return { tier: "credits", tierSource: "provider-price" };
+      return { tier: "free", tierSource: "provider-price" };
+    }
+
+    // Token fields present but unparseable; request fee still means credits.
+    if (hasRequest) return { tier: "credits", tierSource: "provider-price" };
+  }
+
   if (row?.free === true || row?.is_free === true) {
     return { tier: "free", tierSource: "provider-flag" };
   }
@@ -42,28 +64,6 @@ export function classifyTier(row, { providerId = null } = {}) {
   }
   if (providerId === "orcarouter" && ORCAROUTER_FREE_IDS.has(id)) {
     return { tier: "free", tierSource: "curated" };
-  }
-  const prompt = row?.pricing?.prompt ?? row?.input_price;
-  const completion = row?.pricing?.completion ?? row?.output_price;
-  if (prompt !== undefined || completion !== undefined) {
-    const p = toNumber(prompt);
-    const c = toNumber(completion);
-    if (p === 0 && (c === 0 || c === null)) return { tier: "free", tierSource: "provider-price" };
-    if (p === 0 || c === 0) {
-      // Half-reported zero (e.g. per-request pricing with prompt 0) is a
-      // credits/promo shape, not proof of free.
-      if (row?.pricing?.request !== undefined) return { tier: "credits", tierSource: "provider-price" };
-      return { tier: "free", tierSource: "provider-price" };
-    }
-    if (p !== null || c !== null) {
-      if (row?.pricing?.request !== undefined && p === null && c === null) {
-        return { tier: "credits", tierSource: "provider-price" };
-      }
-      if (p !== null || c !== null) return { tier: "paid", tierSource: "provider-price" };
-    }
-  }
-  if (row?.pricing?.request !== undefined) {
-    return { tier: "credits", tierSource: "provider-price" };
   }
   return { tier: "unknown", tierSource: "unknown" };
 }
@@ -99,13 +99,23 @@ export function normalizedModels(payload, { providerId = null } = {}) {
   }).filter(Boolean);
 }
 
-function resolveModelsUrl(connection) {
-  // Per-account override first: custom nodes carry their own baseUrl.
+function modelsUrlFromBase(baseUrl) {
+  // Chat overrides (Alibaba MaaS, custom OpenAI/Anthropic nodes) store the
+  // full chat endpoint. Strip the chat leaf so /models resolves on the same host.
+  let base = String(baseUrl).trim().replace(/\/$/, "");
+  base = base
+    .replace(/\/chat\/completions$/i, "")
+    .replace(/\/messages$/i, "")
+    .replace(/\/responses$/i, "");
+  return `${base}/models`;
+}
+
+export function resolveModelsUrl(connection) {
+  // Per-account override first: custom nodes and Alibaba region hosts carry
+  // their own baseUrl (often the full chat URL).
   const configured = connection.providerSpecificData?.baseUrl;
   if (typeof configured === "string" && configured.trim()) {
-    const base = configured.trim().replace(/\/$/, "");
-    if (/\/messages$/.test(base)) return `${base.slice(0, -9)}/models`;
-    return `${base}/models`;
+    return modelsUrlFromBase(configured);
   }
   const provider = REGISTRY.find((entry) => entry.id === connection.provider);
   // modelsFetcher is the declarative models endpoint; transport.validateUrl is

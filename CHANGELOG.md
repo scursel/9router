@@ -20,6 +20,13 @@
 - **Logger**: suppress noisy background token refresh logs
 - **CLI**: export packed `.tgz` directly into workspace root instead of parent directory
 
+## Enhanced
+- **Models**: fix catalog tier precedence (provider price before markers); half-zero prices are paid; `prompt:0`+request is credits; free-wins merge lets paid overwrite unknown
+- **Models**: strip `/chat/completions` (and messages/responses) when deriving per-account `/models` URL
+- **Dashboard**: provider page shows last-24h requests / spent / tokens; clarify model pricing chips (`per-req`, not account balance); refresh catalog UI after manual sync
+- **Chat/Search/Fetch**: combo expansion skips catalog-unavailable members on all three paths
+- **Usage**: prefer official OpenCode Go quota collector (drop custom `opencodeGo.js` duplicate after upstream landed it)
+
 # v0.5.65 (2026-09-03)
 
 ## Features

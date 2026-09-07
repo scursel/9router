@@ -5,14 +5,15 @@ import {
   extractApiKey,
   isValidApiKey,
 } from "../services/auth.js";
-import { getSettings, getCombos } from "@/lib/localDb";
+import { getSettings } from "@/lib/localDb";
 import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
-import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
+import { handleComboChat } from "open-sse/services/combo.js";
+import { getComboModels } from "../services/model.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -68,9 +69,9 @@ export async function handleSearch(request) {
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Missing required field: query");
   }
 
-  // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers
-  const combos = await getCombos();
-  const comboModels = getComboModelsFromData(providerInput, combos);
+  // Combo expansion: providerInput may be a combo name → run fallback/round-robin across providers.
+  // Use the local catalog-aware path so unavailable members are skipped (same as chat).
+  const comboModels = await getComboModels(providerInput);
   if (comboModels) {
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";

@@ -534,7 +534,14 @@ export async function buildModelsList(kindFilter, options = {}) {
           if (typeof modelId !== "string" || modelId.trim() === "") continue;
           const incomingTier = typeof model?.tier === "string" ? model.tier : null;
           const storedTier = tierById.get(modelId);
-          if (incomingTier && (!storedTier || (incomingTier === "free" && storedTier !== "free"))) {
+          // Merge policy: free wins over everything; paid/credits overwrite
+          // unknown; never downgrade free to paid/credits/unknown.
+          const shouldTakeTier = incomingTier && (
+            !storedTier
+            || incomingTier === "free"
+            || (storedTier === "unknown" && incomingTier !== "unknown")
+          );
+          if (shouldTakeTier) {
             tierById.set(modelId, incomingTier);
             if (model?.pricing) tierPricingById.set(modelId, model.pricing);
             else tierPricingById.delete(modelId);

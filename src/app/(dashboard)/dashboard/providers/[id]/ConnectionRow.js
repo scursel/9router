@@ -7,7 +7,7 @@ import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 import CircuitBreakerBadge from "../components/CircuitBreakerBadge";
 
-export default function ConnectionRow({ connection, affectedCombos = [], proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null }) {
+export default function ConnectionRow({ connection, affectedCombos = [], proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null, onCatalogSynced = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [showFullError, setShowFullError] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
@@ -178,7 +178,11 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
       const data = await response.json();
       if (data.skipped) setCatalogMessage("This provider does not publish a model list.");
       else if (data.error) setCatalogMessage(data.error);
-      else setCatalogMessage(`Model list updated — ${data.available ?? 0} model${(data.available ?? 0) === 1 ? "" : "s"}.`);
+      else {
+        setCatalogMessage(`Model list updated — ${data.available ?? 0} model${(data.available ?? 0) === 1 ? "" : "s"}.`);
+        // Refresh parent connection list so tier badges / counts update without remount.
+        if (typeof onCatalogSynced === "function") await onCatalogSynced();
+      }
     } catch {
       setCatalogMessage("Could not update the model list.");
     } finally {
@@ -258,14 +262,6 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
                 >
                   {status === "never-synced" ? "Not yet synced" : status === "error" ? "Sync failed" : status === "stale" ? "Stale" : `${availableCount} models`}
                 </Badge>
-                {status !== "never-synced" && status !== "error" && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-text-muted" aria-label={`Models by tier: ${freeCount} free, ${creditsCount} credits, ${paidCount} paid, ${unknownCount} unknown`}>
-                    <span className="rounded bg-emerald-500/10 px-1 py-0.5 text-emerald-700 dark:text-emerald-300">{freeCount} free</span>
-                    <span className="rounded bg-amber-500/10 px-1 py-0.5 text-amber-700 dark:text-amber-300">{creditsCount} credits</span>
-                    <span className="rounded bg-sky-500/10 px-1 py-0.5 text-sky-700 dark:text-sky-300">{paidCount} paid</span>
-                    {unknownCount > 0 && <span className="rounded bg-zinc-500/10 px-1 py-0.5">{unknownCount} unknown</span>}
-                  </span>
-                )}
                 {catalog.lastSuccessAt && <span className="text-[11px] text-text-muted">Updated {formatSyncDate(catalog.lastSuccessAt)}</span>}
                 {stale && status === "ok" && <span className="text-[11px] text-amber-600 dark:text-amber-400">Catalog outdated — update now</span>}
                 {curatedHasWarning && <span className="text-[11px] text-amber-600 dark:text-amber-400" title="Some models rely on curated rules and pricing may change">Curated rule</span>}
@@ -287,6 +283,18 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
                   no_proxy: {noProxyText}
                 </span>
               )}
+            </div>
+          )}
+          {catalog && status !== "never-synced" && status !== "error" && (freeCount + creditsCount + paidCount + unknownCount) > 0 && (
+            <div
+              className="mt-1 flex flex-wrap items-center gap-1"
+              title="Pricing tier of each discovered model — not your account balance"
+              aria-label={`Model pricing tiers: ${freeCount} free, ${creditsCount} per-request, ${paidCount} paid, ${unknownCount} unknown`}
+            >
+              {freeCount > 0 && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-300">{freeCount} free</span>}
+              {creditsCount > 0 && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-300" title="Models billed per request (e.g. image), not token-priced">{creditsCount} per-req</span>}
+              {paidCount > 0 && <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[11px] text-sky-700 dark:text-sky-300">{paidCount} paid</span>}
+              {unknownCount > 0 && <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[11px] text-text-muted">{unknownCount} unknown price</span>}
             </div>
           )}
           {catalog && unavailableModels.length > 0 && (
@@ -312,8 +320,8 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
               </button>
               {showCatalogDetails && (
                 <div className="mt-1 rounded-lg border border-border p-2">
-                  <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter models by tier">
-                    {[["all", "All"], ["free", "Free only"], ["credits", "Credits"], ["paid", "Paid"], ["unknown", "Unknown"]].map(([value, label]) => (
+                  <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter models by pricing tier">
+                    {[["all", "All"], ["free", "Free"], ["credits", "Per-request"], ["paid", "Paid"], ["unknown", "Unknown"]].map(([value, label]) => (
                       <button
                         key={value}
                         type="button"
@@ -341,7 +349,7 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
                             </span>
                           )}
                           <span className={`rounded px-1 py-px ${m.tier === "free" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : m.tier === "credits" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : m.tier === "paid" ? "bg-sky-500/10 text-sky-700 dark:text-sky-300" : "bg-zinc-500/10"}`}>
-                            {m.tier || "unknown"}
+                            {m.tier === "credits" ? "per-req" : (m.tier || "unknown")}
                           </span>
                         </span>
                       </li>
@@ -472,6 +480,7 @@ ConnectionRow.propTypes = {
   onMoveDown: PropTypes.func.isRequired,
   onToggleActive: PropTypes.func.isRequired,
   onUpdateProxy: PropTypes.func,
+  onCatalogSynced: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   oneByOneStatus: PropTypes.shape({

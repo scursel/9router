@@ -18,6 +18,7 @@ import {
   getConnectionCatalog,
   isConnectionCatalogStale,
   normalizedModels,
+  resolveModelsUrl,
   syncConnectionCatalog,
 } from "../../src/lib/modelSync/connectionCatalog.js";
 import {
@@ -74,6 +75,73 @@ describe("classifyTier", () => {
   it("applies curated rules only for the matching provider", () => {
     expect(classifyTier({ id: "orcarouter/free" }, { providerId: "orcarouter" }).tier).toBe("free");
     expect(classifyTier({ id: "orcarouter/free" }, { providerId: "other" }).tier).toBe("unknown");
+  });
+
+  // Precedence (MODEL_SYNC_CATALOG.md): price → markers → curated → unknown.
+  // models.dev overlay fills unknowns later at the /v1/models route layer.
+  it("lets provider price beat :free/-free suffix and free flags", () => {
+    expect(classifyTier({ id: "x:free", pricing: { prompt: 0.01, completion: 0.03 } })).toEqual({
+      tier: "paid",
+      tierSource: "provider-price",
+    });
+    expect(classifyTier({ id: "muse-spark-1.2-free", pricing: { prompt: 1, completion: 1 } }).tier).toBe("paid");
+    expect(classifyTier({ id: "m", free: true, pricing: { prompt: 1, completion: 1 } }).tier).toBe("paid");
+    expect(classifyTier({ id: "m", is_free: true, pricing: { prompt: 0.5, completion: 0.5 } }).tier).toBe("paid");
+  });
+
+  it("lets provider price beat curated free ids", () => {
+    expect(
+      classifyTier(
+        { id: "orcarouter/free", pricing: { prompt: 0.01, completion: 0.02 } },
+        { providerId: "orcarouter" },
+      ).tier,
+    ).toBe("paid");
+  });
+
+  it("treats half-zero token prices as paid, not free", () => {
+    expect(classifyTier({ id: "m", pricing: { prompt: 0, completion: 0.01 } })).toEqual({
+      tier: "paid",
+      tierSource: "provider-price",
+    });
+    expect(classifyTier({ id: "m", pricing: { prompt: 0.01, completion: 0 } }).tier).toBe("paid");
+  });
+
+  it("classifies prompt:0 + per-request pricing as credits", () => {
+    expect(classifyTier({ id: "img", pricing: { prompt: 0, request: "0.02" } })).toEqual({
+      tier: "credits",
+      tierSource: "provider-price",
+    });
+  });
+
+  it("still uses markers when there is no price signal", () => {
+    expect(classifyTier({ id: "x:free" }).tier).toBe("free");
+    expect(classifyTier({ id: "m", free: true }).tier).toBe("free");
+  });
+});
+
+describe("resolveModelsUrl", () => {
+  it("strips chat/completions (and messages/responses) before appending /models", () => {
+    expect(resolveModelsUrl({
+      provider: "alicode-intl",
+      providerSpecificData: {
+        baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+      },
+    })).toBe("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models");
+
+    expect(resolveModelsUrl({
+      provider: "custom",
+      providerSpecificData: { baseUrl: "https://example.com/v1/messages" },
+    })).toBe("https://example.com/v1/models");
+
+    expect(resolveModelsUrl({
+      provider: "custom",
+      providerSpecificData: { baseUrl: "https://example.com/v1/responses" },
+    })).toBe("https://example.com/v1/models");
+  });
+
+  it("falls back to registry modelsFetcher when no per-account baseUrl", () => {
+    const url = resolveModelsUrl({ provider: "bai", providerSpecificData: {} });
+    expect(url).toMatch(/\/models$/);
   });
 });
 

@@ -117,6 +117,24 @@ describe("B2: união multi-conta com dedup correto (free wins)", () => {
     expect(shared[0].tier).toBe("free");
   });
 
+  it("lets paid/credits overwrite a prior unknown tier across accounts", async () => {
+    mocks.getProviderConnections.mockResolvedValue([
+      conn("bai", { id: "bai-a", modelCatalog: catalog([{ id: "shared", tier: "unknown", availability: "available" }]) }),
+      conn("bai", { id: "bai-b", modelCatalog: catalog([{ id: "shared", tier: "paid", availability: "available", pricing: { prompt: 0.01, completion: 0.02 } }]) }),
+    ]);
+    const all = await buildModelsList(["llm"]);
+    expect(all.find((m) => m.id === "bai/shared")?.tier).toBe("paid");
+  });
+
+  it("does not let paid overwrite an existing free tier", async () => {
+    mocks.getProviderConnections.mockResolvedValue([
+      conn("bai", { id: "bai-a", modelCatalog: catalog([{ id: "shared", tier: "free", availability: "available" }]) }),
+      conn("bai", { id: "bai-b", modelCatalog: catalog([{ id: "shared", tier: "paid", availability: "available" }]) }),
+    ]);
+    const all = await buildModelsList(["llm"]);
+    expect(all.find((m) => m.id === "bai/shared")?.tier).toBe("free");
+  });
+
   it("single-appearance model is emitted once regardless of account count", async () => {
     mocks.getProviderConnections.mockResolvedValue([
       conn("bai", { id: "bai-a", modelCatalog: catalog([{ id: "only-a", tier: "paid", availability: "available" }]) }),

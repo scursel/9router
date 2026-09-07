@@ -56,7 +56,8 @@ Can:
 - Enrich tiers/limits from the public models.dev feed (metadata only — no
   remote code is downloaded or executed, and a discovered models.dev entry
   never becomes an executable provider on its own).
-- Suggest custom → native migration on exact endpoint-host match.
+- Suggest custom → native migration on exact endpoint-host match
+  (API `/api/providers/migration-suggestions`; dashboard panel removed).
 
 Cannot (requires code, stays manual):
 - Turning a newly discovered provider name into a working connector:
@@ -101,12 +102,17 @@ Cannot (requires code, stays manual):
 - Muse/OpenCode Zen (`opencode`): unchanged — already native.
 - Local Qwen (HF/Modal): untouched, remain custom nodes.
 
-## Migration (manual confirmation required)
+## Migration (API remains; dashboard panel removed)
 
-1. Open Providers → "Native migration available" (exact host match only).
-2. Review affected combos/aliases/custom models listed per suggestion.
-3. Confirm in the dialog (no native `confirm()`): a JSON backup of the
-   affected rows lands in `DATA_DIR/migration-backups/`, then a native
-   connection is created duplicating the key.
-4. The custom connection stays. Update combos/aliases to the native prefix
+The one-shot custom→native migration UI (`MigrationPanel`) was removed after
+the known custom hosts were migrated. The backend endpoint
+`/api/providers/migration-suggestions` still exists for scripted/manual use:
+
+1. `GET /api/providers/migration-suggestions` — exact host match only; lists
+   affected combos/aliases/custom models per suggestion.
+2. `POST /api/providers/migration-suggestions` — creates a JSON backup under
+   `DATA_DIR/migration-backups/`, then a native connection duplicating the key.
+3. The custom connection stays. Update combos/aliases to the native prefix
    yourself — nothing is retargeted automatically.
+
+Local Qwen (HF/Modal) and other non-public hosts stay custom by design.

@@ -434,7 +434,8 @@ describe("Quota Collectors - Unit Tests", () => {
         apiKey: "og-key-dispatch-" + Date.now(),
       });
 
-      expect(res.quotas["Rolling (5h)"].used).toBe(50);
+      // Official collector labels the window "Rolling" (see opencode-go-usage.test.js).
+      expect(res.quotas.Rolling.used).toBe(50);
     });
   });
 });
