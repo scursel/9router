@@ -51,6 +51,9 @@ source/*
 .cursor/*
 docs/*
 !docs/ARCHITECTURE.md
+!docs/COMPARATIVO-DURINDOOR.md
+!docs/PESQUISA-CATALOGOS-PROVEDORES.md
+!docs/MODEL_SYNC_CATALOG.md
 test/*
 open-sse/test/*
 RM.vn.md

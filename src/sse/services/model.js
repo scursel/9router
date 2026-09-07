@@ -1,5 +1,5 @@
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
+import { getModelAliases, getComboByName, getProviderNodes, getProviderConnections } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 
@@ -88,7 +88,46 @@ export async function getComboModels(modelStr) {
 
   const combo = await getComboByName(modelStr);
   if (combo && combo.models && combo.models.length > 0) {
-    return combo.models;
+    return filterUnavailableComboMembers(combo.models);
   }
   return null;
+}
+
+// A catalog is account-specific. A combo member remains runnable when at least
+// one active account either has not been catalogued yet or still lists it. This
+// deliberately preserves the stored combo: sync only changes routing, never a
+// user's fallback order or aliases. Matching is prefix-aware: gateways report
+// ids like `anthropic/claude-sonnet-5` while the member may carry only the
+// trailing segment.
+function catalogListsModel(catalogModels, providerId, model) {
+  const bare = model.includes("/") ? model.split("/").pop() : model;
+  return (catalogModels || []).some((entry) => {
+    if (!entry || entry.availability === "unavailable") return false;
+    const candidate = String(entry.id || "");
+    if (!candidate) return false;
+    if (candidate === model || candidate === bare) return true;
+    const candidateBare = candidate.includes("/") ? candidate.split("/").pop() : candidate;
+    return candidateBare === bare;
+  });
+}
+
+async function filterUnavailableComboMembers(models) {
+  const connections = await getProviderConnections({ isActive: true });
+  const candidates = await Promise.all(models.map(async (member) => {
+    const info = await getModelInfo(member);
+    if (!info?.provider || !info?.model) return member;
+    const accounts = connections.filter((connection) => connection.provider === info.provider);
+    if (!accounts.length) return member;
+    const catalogued = accounts.filter((connection) => Array.isArray(connection.modelCatalog?.models));
+    if (!catalogued.length) return member;
+    const availableSomewhere = catalogued.some((connection) =>
+      catalogListsModel(connection.modelCatalog.models, info.provider, info.model)
+    );
+    const unverifiedSomewhere = accounts.length > catalogued.length;
+    return availableSomewhere || unverifiedSomewhere ? member : null;
+  }));
+  // No fallback to the original list: when every member is confirmed
+  // unavailable the caller (handleComboChat) returns a clear 503 instead of
+  // retrying dead models and failing opaquely.
+  return candidates.filter(Boolean);
 }

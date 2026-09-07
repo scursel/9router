@@ -237,6 +237,10 @@ const PROVIDER_MODELS_CONFIG = {
   byteplus: createOpenAIModelsConfig("https://ark.ap-southeast.bytepluses.com/api/coding/v3/models"),
 
   // OpenAI-compatible API key providers
+  bai: createOpenAIModelsConfig("https://api.b.ai/v1/models"),
+  orcarouter: createOpenAIModelsConfig("https://api.orcarouter.ai/v1/models"),
+  dahl: createOpenAIModelsConfig("https://inference.dahl.global/v1/models"),
+  "alitp-intl": createOpenAIModelsConfig("https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models"),
   deepseek: createOpenAIModelsConfig("https://api.deepseek.com/models"),
   groq: createOpenAIModelsConfig("https://api.groq.com/openai/v1/models"),
   xai: createOpenAIModelsConfig("https://api.x.ai/v1/models"),

@@ -13,7 +13,7 @@ export const CATALOG_FILE = path.join(DATA_DIR, "model-catalog.json");
 // Trimmed upstream catalog, read by the add-models skill (not by the router).
 export const CATALOG_RAW_FILE = path.join(DATA_DIR, "model-catalog-raw.json");
 
-const EMPTY = { models: {}, providers: {} };
+const EMPTY = { models: {}, providers: {}, costs: {} };
 let cache = EMPTY;
 let cachedMtime = -1;
 
@@ -38,13 +38,12 @@ function load() {
   cachedMtime = mtime;
   try {
     const parsed = JSON.parse(fs.readFileSync(CATALOG_FILE, "utf8"));
-    cache = { models: parsed?.models || {}, providers: parsed?.providers || {} };
+    cache = { models: parsed?.models || {}, providers: parsed?.providers || {}, costs: parsed?.costs || {} };
   } catch {
     cache = EMPTY;
   }
   return cache;
 }
-
 // Modality is a property of the model itself — any gateway serving it inherits
 // the same image/video/pdf support, so this is keyed by model id alone.
 export function getCatalogModalities(model) {
@@ -55,6 +54,15 @@ export function getCatalogModalities(model) {
 // one truncates differently, so these stay keyed by provider + model.
 export function getCatalogLimits(provider, model) {
   const byProvider = provider && load().providers[provider];
+  if (!byProvider) return null;
+  return byProvider[model] || byProvider[baseId(model)] || null;
+}
+
+// Tier precedence #2: per-model cost from models.dev, keyed by 9router
+// provider + base model id. Only consulted when the account's own /models
+// listing left the tier unknown — never overrides provider-reported prices.
+export function getCatalogCost(provider, model) {
+  const byProvider = provider && load().costs?.[provider];
   if (!byProvider) return null;
   return byProvider[model] || byProvider[baseId(model)] || null;
 }

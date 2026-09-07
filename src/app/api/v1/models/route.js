@@ -18,7 +18,7 @@ import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { DEFAULT_CAPABILITIES, capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
-
+import { getCatalogCost } from "open-sse/providers/catalogOverride.js";
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
 // Adding a provider here makes /v1/models prefer the live catalog for it.
@@ -397,12 +397,15 @@ export async function buildModelsList(kindFilter, options = {}) {
   }
   const isDisabled = (alias, modelId) => Array.isArray(disabledByAlias[alias]) && disabledByAlias[alias].includes(modelId);
 
+  const connectionsByProvider = new Map();
   const activeConnectionByProvider = new Map();
   for (const conn of connections) {
-    if (!activeConnectionByProvider.has(conn.provider)) {
-      activeConnectionByProvider.set(conn.provider, conn);
-    }
+    if (!conn?.provider) continue;
+    if (!connectionsByProvider.has(conn.provider)) connectionsByProvider.set(conn.provider, []);
+    connectionsByProvider.get(conn.provider).push(conn);
+    if (!activeConnectionByProvider.has(conn.provider)) activeConnectionByProvider.set(conn.provider, conn);
   }
+
 
   const models = [];
   // Only LLM combos are nestable targets: a web combo answers a different kind
@@ -511,6 +514,40 @@ export async function buildModelsList(kindFilter, options = {}) {
           )
         : providerModels.map((model) => model.id);
 
+      // Account catalogues are authoritative when a provider publishes /models.
+      // Unlike the static seed they can add new provider models without a
+      // 9Router release. The union across every active account of this
+      // provider decides: a model stays advertised while any account still
+      // lists it as available (removal needs two consecutive confirmed
+      // absences per account — see connectionCatalog.js). Entries retained
+      // only for audit stay out of discovery, but remain in stored combos.
+      const syncedModels = (connectionsByProvider.get(providerId) || [])
+        .flatMap((c) => (Array.isArray(c?.modelCatalog?.models) ? c.modelCatalog.models : []));
+      const tierById = new Map();
+      const tierPricingById = new Map();
+      const syncedKindById = new Map();
+      if (!hasExplicitEnabledModels && syncedModels.length > 0) {
+        const added = new Set();
+        rawModelIds = [];
+        for (const model of syncedModels) {
+          const modelId = model?.id;
+          if (typeof modelId !== "string" || modelId.trim() === "") continue;
+          const incomingTier = typeof model?.tier === "string" ? model.tier : null;
+          const storedTier = tierById.get(modelId);
+          if (incomingTier && (!storedTier || (incomingTier === "free" && storedTier !== "free"))) {
+            tierById.set(modelId, incomingTier);
+            if (model?.pricing) tierPricingById.set(modelId, model.pricing);
+            else tierPricingById.delete(modelId);
+            if (model?.kind) syncedKindById.set(modelId, model.kind);
+          }
+          if (model?.availability === "unavailable") continue;
+          if (added.has(modelId)) continue;
+          added.add(modelId);
+          rawModelIds.push(modelId);
+        }
+      }
+      const hasSyncedModels = !hasExplicitEnabledModels && syncedModels.length > 0;
+
       if (isCompatibleProvider && rawModelIds.length === 0 && !skipDynamicFetch) {
         rawModelIds = await fetchCompatibleModelIds(conn);
       }
@@ -599,15 +636,16 @@ export async function buildModelsList(kindFilter, options = {}) {
       const mergedModelIds = Array.from(new Set([...modelIds, ...customModelIds, ...aliasModelIds]));
 
       for (const modelId of mergedModelIds) {
-        // Resolve kind: prefer custom/live metadata, then static, then ID heuristics.
+        // Resolve kind: prefer custom/live/synced metadata, then static, then ID heuristics.
+        // Synced non-LLM kinds (embedding/tts/image) must never leak into the chat list.
         const customKind = customModelKindById.get(modelId);
         const liveKind = liveModelKindById.get(modelId);
-        const kind = customKind || liveKind || staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
+        const syncedKind = hasSyncedModels ? syncedKindById.get(modelId) : null;
+        const kind = customKind || liveKind || syncedKind || staticModelKindById.get(modelId) || inferKindFromUnknownModelId(modelId);
         // imageToText custom models stay in the LLM list (vision-capable chat models)
         const allowAsLlm = kind === "imageToText" && kindFilter.includes(LLM_KIND);
         if (!kindFilter.includes(kind) && !allowAsLlm) continue;
         if (isDisabled(outputAlias, modelId) || isDisabled(staticAlias, modelId)) continue;
-
         const model = {
           id: `${outputAlias}/${modelId}`,
           object: "model",
@@ -621,8 +659,26 @@ export async function buildModelsList(kindFilter, options = {}) {
           || capabilitiesFromServiceKind(customKind || liveKind)
           || (kind === LLM_KIND ? getCapabilitiesForModel(providerId, modelId) : null);
         if (caps) model.capabilities = caps;
-        // Token limits under the snake_case names the OpenAI/OpenRouter
-        // convention uses. `capabilities.contextWindow` is camelCase and nested,
+        // Tier: synced account tier wins; models.dev cost fills unknowns only.
+        let syncedTier = tierById.get(modelId);
+        let tierNote = null;
+        if ((!syncedTier || syncedTier === "unknown") && (kind === LLM_KIND || allowAsLlm)) {
+          try {
+            const cost = getCatalogCost(providerId, modelId);
+            if (cost && (cost.input !== undefined || cost.output !== undefined)) {
+              const zero = (v) => v === 0 || v === "0";
+              if (zero(cost.input) && (cost.output === undefined || cost.output === null || zero(cost.output))) syncedTier = "free";
+              else if (cost.input !== null || cost.output !== null) syncedTier = "paid";
+              if (syncedTier && syncedTier !== "unknown") tierNote = "models.dev";
+            }
+          } catch {}
+        }
+        if (syncedTier && syncedTier !== "unknown") {
+          model.tier = syncedTier;
+          if (tierNote) model.tier_source = tierNote;
+          const syncedPricing = tierPricingById.get(modelId);
+          if (syncedPricing) model.pricing = syncedPricing;
+        }
         // so clients matching context_length find nothing, fall back to guessing
         // the window from the model name, and guess high — a 372k model read as
         // 1.05M never reaches its compaction threshold and hard-fails upstream.
@@ -698,7 +754,11 @@ export async function GET(request) {
   try {
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
-    const data = await buildModelsList([LLM_KIND], { skipDynamicFetch });
+    const url = request?.nextUrl || (request?.url ? new URL(request.url) : null);
+    const tierFilter = url?.searchParams?.get("tier");
+    const freeOnly = tierFilter === "free";
+    let data = await buildModelsList([LLM_KIND], { skipDynamicFetch });
+    if (freeOnly) data = data.filter((m) => m?.tier === "free");
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

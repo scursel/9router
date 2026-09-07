@@ -29,14 +29,23 @@ export function normalizeProviderSpecificData(provider, body = {}, providerSpeci
     ? { ...providerSpecificData }
     : {};
 
-  if (provider === "ollama-local") {
-    const baseUrl = (
+  const ALIBABA_SE_HOSTS = new Set(["alicode", "alicode-intl", "alims-intl", "alitp-intl"]);
+  const needsBaseUrl = provider === "ollama-local" || ALIBABA_SE_HOSTS.has(provider);
+  if (needsBaseUrl) {
+    let baseUrl = (
       next.baseUrl ||
       body.baseUrl ||
       body.baseURL ||
       body.ollamaHostUrl ||
       ""
     ).trim();
+
+    // SEC-SSRF-002 narrowing: Alibaba MaaS hosts are public cloud — block
+    // non-https to avoid plaintext Bearer forwarding. Local nodes (ollama-local)
+    // keep permissiveness via the allowlist branch.
+    if (baseUrl && ALIBABA_SE_HOSTS.has(provider) && !baseUrl.toLowerCase().startsWith("https://")) {
+      baseUrl = "";
+    }
 
     if (baseUrl) next.baseUrl = baseUrl;
   }

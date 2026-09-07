@@ -22,9 +22,9 @@ export default {
     baseUrl: "https://opencode.ai/zen/go/v1/chat/completions",
     headers: {},
   },
-  // Multi-endpoint: pick the transport matching the client sourceFormat to skip
-  // translation. Guarded per-model by `supportedFormats` (see chatCore) because
-  // opencode-go models differ in endpoint support.
+  // Overwritten by the live account catalog (opencode.ai/zen/go/v1/models is
+  // the canonical list). The seed stays as a fallback for offline.
+  modelsFetcher: { url: "https://opencode.ai/zen/go/v1/models", type: "openai" },
   transports: [
     { format: "openai", baseUrl: "https://opencode.ai/zen/go/v1/chat/completions", auth: { combined: true, header: "Authorization", scheme: "bearer" } },
     { format: "claude", baseUrl: "https://opencode.ai/zen/go/v1/messages", auth: { combined: true, header: "x-api-key", scheme: "raw", anthropicVersion: true } },

@@ -982,6 +982,11 @@ export default function ProviderDetailPage() {
             </div>
             <div className="flex-1 min-w-0">
               <ConnectionRow
+                affectedCombos={comboNamesFor(
+                  (conn.modelCatalog?.models || [])
+                    .filter((m) => m?.availability === "unavailable" && m?.id)
+                    .flatMap((m) => [`${providerStorageAlias}/${m.id}`, `${providerId}/${m.id}`]),
+                )}
                 connection={conn}
                 proxyPools={proxyPools}
                 isOAuth={isOAuth}

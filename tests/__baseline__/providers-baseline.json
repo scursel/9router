@@ -1008,5 +1008,23 @@
       "preserveCacheControl": true
     },
     "format": "openai"
+  },
+  "bai": {
+    "baseUrl": "https://api.b.ai/v1/chat/completions",
+    "validateUrl": "https://api.b.ai/v1/models",
+    "headers": {},
+    "format": "openai"
+  },
+  "orcarouter": {
+    "baseUrl": "https://api.orcarouter.ai/v1/chat/completions",
+    "validateUrl": "https://api.orcarouter.ai/v1/models",
+    "headers": {},
+    "format": "openai"
+  },
+  "dahl": {
+    "baseUrl": "https://inference.dahl.global/v1/chat/completions",
+    "validateUrl": "https://inference.dahl.global/v1/models",
+    "headers": {},
+    "format": "openai"
   }
 }

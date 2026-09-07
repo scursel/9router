@@ -107,6 +107,17 @@ export class DefaultExecutor extends BaseExecutor {
     if (rt?.baseUrl) {
       return rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
     }
+    // Per-account baseUrl override for Alibaba MaaS (host differs per account
+    // region — SE subdomains vary; never hardcode the wrong endpoint). When
+    // the account carries providerSpecificData.baseUrl, use it as the chat
+    // baseUrl verbatim (already includes /v1/chat/completions or compatible-mode).
+    // Cheap narrowing (SEC-SSRF-002): Alibaba MaaS is public cloud only -> require https.
+    const ALIBABA_BASEURL_PROVIDERS = new Set(["alicode", "alicode-intl", "alims-intl", "alitp-intl"]);
+    if (ALIBABA_BASEURL_PROVIDERS.has(this.provider)) {
+      const override = credentials?.providerSpecificData?.baseUrl?.trim();
+      if (override && !override.toLowerCase().startsWith("https://")) return this.config.baseUrl;
+      if (override) return override.replace(/\/$/, "");
+    }
     if (this.provider?.startsWith?.("openai-compatible-")) {
       const baseUrl = credentials?.providerSpecificData?.baseUrl || OPENAI_COMPAT_BASE;
       const normalized = baseUrl.replace(/\/$/, "");

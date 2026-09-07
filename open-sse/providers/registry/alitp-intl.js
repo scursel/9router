@@ -24,6 +24,9 @@ export default {
     headers: {},
     quirks: { preserveCacheControl: true },
   },
+  // Singapore is the only region serving the Token Plan; the /models listing
+  // on the same host needs the account key (401 without one).
+  modelsFetcher: { url: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models", type: "openai" },
   models: [
     { id: "qwen3.8-max-preview", name: "Qwen3.8 Max Preview" },
     { id: "qwen3.7-max", name: "Qwen3.7 Max" },

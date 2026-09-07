@@ -181,13 +181,22 @@ export async function POST(request) {
       globalPriority: globalPriority || null,
       defaultModel: defaultModel || null,
       providerSpecificData: mergedProviderSpecificData,
-      isActive: true,
       testStatus: testStatus || "unknown",
     });
 
     // Hide sensitive fields
     const result = { ...newConnection };
     delete result.apiKey;
+
+    // First catalog sync: the account's real model list should be visible in
+    // /v1/models and the dashboard without waiting up to 24h for the daily
+    // scheduler. Fire-and-forget and fail-open — a sync failure must never
+    // fail connection creation, and no key material is logged (see
+    // connectionCatalog.js).
+    try {
+      const { syncConnectionCatalog } = await import("@/lib/modelSync/connectionCatalog.js");
+      syncConnectionCatalog(newConnection.id).catch(() => {});
+    } catch {}
 
     return NextResponse.json({ connection: result }, { status: 201 });
   } catch (error) {

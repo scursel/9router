@@ -18,6 +18,7 @@ export default {
     headers: {},
     quirks: { preserveCacheControl: true },
   },
+  modelsFetcher: { url: "https://coding-intl.dashscope.aliyuncs.com/v1/models", type: "openai" },
   models: [
     { id: "qwen3.5-plus", name: "Qwen3.5 Plus" },
     { id: "kimi-k2.5", name: "Kimi K2.5" },

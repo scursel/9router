@@ -7,10 +7,12 @@ import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 import CircuitBreakerBadge from "../components/CircuitBreakerBadge";
 
-export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null }) {
+export default function ConnectionRow({ connection, affectedCombos = [], proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [showFullError, setShowFullError] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
+  const [syncingModels, setSyncingModels] = useState(false);
+  const [catalogMessage, setCatalogMessage] = useState("");
   const proxyDropdownRef = useRef(null);
 
   const proxyPoolMap = new Map((proxyPools || []).map((pool) => [pool.id, pool]));
@@ -137,6 +139,53 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
     return null;
   };
 
+  const catalog = connection.modelCatalog;
+  const catalogModels = catalog?.models || [];
+  const countByTier = (tier) => catalogModels.filter((m) => m.availability !== "unavailable" && m.tier === tier).length;
+  const freeCount = countByTier("free");
+  const creditsCount = countByTier("credits");
+  const paidCount = countByTier("paid");
+  const unknownCount = countByTier("unknown");
+  const availableCount = catalogModels.filter((m) => m.availability !== "unavailable").length;
+  const unavailableModels = catalogModels.filter((m) => m.availability === "unavailable");
+  const pendingModels = catalogModels.filter((m) => m.availability === "temporarily-absent");
+  const curatedHasWarning = catalogModels.some((m) => m.tierSource === "curated");
+  const status = !catalog ? "never-synced"
+    : catalog.lastError && !catalog.lastSuccessAt ? "error"
+    : catalog.lastError ? "stale"
+    : !catalog.lastSuccessAt ? "never-synced"
+    : "ok";
+  const stale = (() => {
+    const ts = Date.parse(catalog?.lastSuccessAt || "");
+    if (!Number.isFinite(ts)) return false;
+    return Date.now() - ts > 26 * 60 * 60 * 1000;
+  })();
+  const formatSyncDate = (iso) => {
+    if (!iso) return "—";
+    try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  };
+  const [showCatalogDetails, setShowCatalogDetails] = useState(false);
+  const [tierFilter, setTierFilter] = useState("all");
+  const filteredForDetails = (() => {
+    if (tierFilter === "all") return catalogModels.filter((m) => m.availability !== "unavailable");
+    return catalogModels.filter((m) => m.availability !== "unavailable" && m.tier === tierFilter);
+  })();
+  const syncModels = async () => {
+    setSyncingModels(true);
+    setCatalogMessage("");
+    try {
+      const response = await fetch(`/api/providers/${connection.id}/model-catalog`, { method: "POST" });
+      const data = await response.json();
+      if (data.skipped) setCatalogMessage("This provider does not publish a model list.");
+      else if (data.error) setCatalogMessage(data.error);
+      else setCatalogMessage(`Model list updated — ${data.available ?? 0} model${(data.available ?? 0) === 1 ? "" : "s"}.`);
+    } catch {
+      setCatalogMessage("Could not update the model list.");
+    } finally {
+      setSyncingModels(false);
+    }
+  };
+
   return (
     <div className={`group flex min-w-0 flex-col gap-3 rounded-lg p-2 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between ${connection.isActive === false ? "opacity-60" : ""}`}>
       <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
@@ -200,6 +249,28 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
                 {getOneByOneLabel()}
               </Badge>
             )}
+            {catalog && (
+              <>
+                <Badge
+                  variant={status === "error" || status === "stale" ? "error" : status === "ok" ? "success" : "default"}
+                  size="sm"
+                  title={status === "error" ? `Sync failed: ${catalog.lastError || "unknown error"}` : `Last sync: ${formatSyncDate(catalog.lastSuccessAt)}`}
+                >
+                  {status === "never-synced" ? "Not yet synced" : status === "error" ? "Sync failed" : status === "stale" ? "Stale" : `${availableCount} models`}
+                </Badge>
+                {status !== "never-synced" && status !== "error" && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-text-muted" aria-label={`Models by tier: ${freeCount} free, ${creditsCount} credits, ${paidCount} paid, ${unknownCount} unknown`}>
+                    <span className="rounded bg-emerald-500/10 px-1 py-0.5 text-emerald-700 dark:text-emerald-300">{freeCount} free</span>
+                    <span className="rounded bg-amber-500/10 px-1 py-0.5 text-amber-700 dark:text-amber-300">{creditsCount} credits</span>
+                    <span className="rounded bg-sky-500/10 px-1 py-0.5 text-sky-700 dark:text-sky-300">{paidCount} paid</span>
+                    {unknownCount > 0 && <span className="rounded bg-zinc-500/10 px-1 py-0.5">{unknownCount} unknown</span>}
+                  </span>
+                )}
+                {catalog.lastSuccessAt && <span className="text-[11px] text-text-muted">Updated {formatSyncDate(catalog.lastSuccessAt)}</span>}
+                {stale && status === "ok" && <span className="text-[11px] text-amber-600 dark:text-amber-400">Catalog outdated — update now</span>}
+                {curatedHasWarning && <span className="text-[11px] text-amber-600 dark:text-amber-400" title="Some models rely on curated rules and pricing may change">Curated rule</span>}
+              </>
+            )}
           </div>
           {hasAnyProxy && (
             <div className="mt-1 flex items-center gap-2 flex-wrap">
@@ -218,11 +289,87 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               )}
             </div>
           )}
+          {catalog && unavailableModels.length > 0 && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {unavailableModels.length} saved model{unavailableModels.length === 1 ? " is" : "s are"} unavailable and will be skipped by combos. Stored combos are unchanged — remove or replace members only when you confirm it below.
+              {(affectedCombos || []).length > 0 && ` Affected combos: ${(affectedCombos || []).join(", ")}.`}
+            </p>
+          )}
+          {catalog && pendingModels.length > 0 && (
+            <p className="mt-1 text-xs text-text-muted">
+              {pendingModels.length} model{pendingModels.length === 1 ? "" : "s"} temporarily absent — still listed, hidden after one more confirmed sync without {pendingModels.length === 1 ? "it" : "them"}.
+            </p>
+          )}
+          {catalog && status !== "never-synced" && (
+            <div className="mt-1">
+              <button
+                type="button"
+                onClick={() => setShowCatalogDetails((v) => !v)}
+                aria-expanded={showCatalogDetails}
+                className="text-xs text-text-muted underline underline-offset-2 hover:text-primary"
+              >
+                {showCatalogDetails ? "Hide model list" : `Show model list (${availableCount})`}
+              </button>
+              {showCatalogDetails && (
+                <div className="mt-1 rounded-lg border border-border p-2">
+                  <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter models by tier">
+                    {[["all", "All"], ["free", "Free only"], ["credits", "Credits"], ["paid", "Paid"], ["unknown", "Unknown"]].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setTierFilter(value)}
+                        aria-pressed={tierFilter === value}
+                        className={`rounded px-2 py-0.5 text-[11px] ${tierFilter === value ? "bg-primary/10 text-primary" : "text-text-muted hover:bg-black/5 dark:hover:bg-white/5"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {curatedHasWarning && (
+                    <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                      Some models rely on curated rules and pricing may change.
+                    </p>
+                  )}
+                  <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto text-xs">
+                    {filteredForDetails.map((m) => (
+                      <li key={m.id} className="flex items-center justify-between gap-2 py-0.5">
+                        <span className="min-w-0 truncate" title={m.name || m.id}>{m.name || m.id}</span>
+                        <span className="flex shrink-0 items-center gap-1 text-[11px] text-text-muted">
+                          {m.pricing && (m.pricing.prompt !== null || m.pricing.completion !== null) && (
+                            <span title={`prompt ${m.pricing.prompt ?? "?"} / completion ${m.pricing.completion ?? "?"}`}>
+                              {m.pricing.prompt ?? "?"} / {m.pricing.completion ?? "?"}
+                            </span>
+                          )}
+                          <span className={`rounded px-1 py-px ${m.tier === "free" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : m.tier === "credits" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : m.tier === "paid" ? "bg-sky-500/10 text-sky-700 dark:text-sky-300" : "bg-zinc-500/10"}`}>
+                            {m.tier || "unknown"}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                    {filteredForDetails.length === 0 && <li className="text-text-muted">No models in this tier.</li>}
+                  </ul>
+                  {unavailableModels.length > 0 && (
+                    <div className="mt-1 border-t border-border pt-1">
+                      <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">Unavailable — kept in saved combos, skipped at runtime:</p>
+                      <ul className="mt-0.5 space-y-0.5 text-[11px] text-text-muted">
+                        {unavailableModels.map((m) => (
+                          <li key={m.id} className="truncate" title={m.name || m.id}>{m.name || m.id}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {catalog && status === "error" && (
+            <p className="mt-1 text-xs text-red-500">Last sync failed{syncingModels ? " — retrying…" : `: ${catalog.lastError || "unknown error"}`}. Previous model list kept.</p>
+          )}
+          {catalogMessage && <p className="mt-1 text-xs text-text-muted" role="status" aria-live="polite">{catalogMessage}</p>}
         </div>
       </div>
       <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
         <div className="grid flex-1 grid-cols-3 gap-1 sm:flex sm:flex-none">
-          {/* Proxy button with inline dropdown */}
           {(proxyPools || []).length > 0 && (
             <div className="relative" ref={proxyDropdownRef}>
               <button
@@ -267,6 +414,16 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
               </button>
             </Tooltip>
           )}
+          <button
+            type="button"
+            onClick={syncModels}
+            disabled={syncingModels}
+            className="flex w-full flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/5"
+            title="Update this account's model list"
+          >
+            <span className={`material-symbols-outlined text-[18px]${syncingModels ? " animate-spin" : ""}`}>{syncingModels ? "progress_activity" : "sync"}</span>
+            <span className="text-[10px] leading-tight">Models</span>
+          </button>
           <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
@@ -288,6 +445,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
 }
 
 ConnectionRow.propTypes = {
+  affectedCombos: PropTypes.arrayOf(PropTypes.string),
   connection: PropTypes.shape({
     id: PropTypes.string,
     name: PropTypes.string,

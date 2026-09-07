@@ -42,8 +42,12 @@ export async function GET(_request, { params }) {
     const { model } = await params;
     const path = Array.isArray(model) ? model : [model];
     const identifier = path.filter(Boolean).join("/");
+    if (identifier === "free" && path.length === 1) {
+      // Programmatic free-only listing: same chat catalog, tier === "free".
+      const data = (await buildModelsList([LLM_KIND])).filter((m) => m?.tier === "free");
+      return json({ object: "list", data });
+    }
     const kindFilter = path.length === 1 ? KIND_SLUG_MAP[identifier] : null;
-
     if (kindFilter) {
       const data = await buildModelsList(kindFilter);
       return json({ object: "list", data });

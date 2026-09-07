@@ -18,6 +18,9 @@ export default {
     headers: {},
     quirks: { preserveCacheControl: true },
   },
+  // The Coding Plan /v1/models listing is public (no key needed) and mirrors
+  // the static seed below; per-account sync keeps it fresh without a release.
+  modelsFetcher: { url: "https://coding.dashscope.aliyuncs.com/v1/models", type: "openai" },
   models: [
     { id: "qwen3.5-plus", name: "Qwen3.5 Plus" },
     { id: "kimi-k2.5", name: "Kimi K2.5" },

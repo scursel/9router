@@ -40,6 +40,20 @@ const PROVIDER_ALIASES = {
   "cloudflare-ai": "cloudflare-workers-ai",
 };
 
+// 9router provider id -> models.dev provider id(s) carrying per-model COST, used
+// as tier precedence #2 (after the provider's own price, before :free markers).
+// Matches the sync in connectionCatalog.js: only fills tiers the provider left
+// unknown, never overrides provider-reported prices.
+export const COST_PROVIDERS = {
+  "orcarouter": ["orcarouter"],
+  "opencode-go": ["opencode-go"],
+  "alicode": ["alibaba-coding-plan-cn", "alibaba-coding-plan"],
+  "alicode-intl": ["alibaba-coding-plan"],
+  "alims-intl": ["alibaba"],
+  "alitp-intl": ["alibaba-token-plan"],
+  "opencode": ["opencode"],
+};
+
 let state = { running: false, lastSync: null, lastError: null, lastResult: null, etag: null };
 let timer = null;
 
@@ -77,6 +91,27 @@ function slim(catalog) {
   }
   return out;
 }
+
+function buildCosts(catalog) {
+  // { 9routerProvider: { baseModelId: { input, output } } } — costs only, so
+  // the file stays small even though every models.dev entry is indexed.
+  const costs = {};
+  for (const [provider, upstreamIds] of Object.entries(COST_PROVIDERS)) {
+    const byModel = {};
+    for (const upstreamId of upstreamIds) {
+      for (const [modelId, model] of Object.entries(catalog[upstreamId]?.models || {})) {
+        const cost = model?.cost;
+        if (!cost || (cost.input === undefined && cost.output === undefined)) continue;
+        const id = baseId(modelId);
+        if (!id || byModel[id]) continue;
+        byModel[id] = { input: cost.input ?? null, output: cost.output ?? null };
+      }
+    }
+    if (Object.keys(byModel).length) costs[provider] = byModel;
+  }
+  return costs;
+}
+
 
 function build(catalog, entries) {
   // Index once: per provider for limits, and tallied across all of them for
@@ -136,7 +171,7 @@ function build(catalog, entries) {
     if (Object.keys(delta).length) (providers[provider] || (providers[provider] = {}))[model] = delta;
   }
 
-  return { models, providers };
+  return { models, providers, costs: buildCosts(catalog) };
 }
 
 // Snapshot every registered model with the capabilities the hand-written tables
@@ -186,8 +221,8 @@ export async function syncModelCatalog() {
       const catalog = await response.json();
       const etag = response.headers.get("etag") || null;
       const entries = await collectEntries();
-      const { models, providers } = build(catalog, entries);
-      const serialized = JSON.stringify({ v: 1, etag, syncedAt: Date.now(), models, providers });
+      const { models, providers, costs } = build(catalog, entries);
+      const serialized = JSON.stringify({ v: 1, etag, syncedAt: Date.now(), models, providers, costs });
 
       writeAtomic(CATALOG_FILE, serialized);
       writeAtomic(CATALOG_RAW_FILE, JSON.stringify(slim(catalog)));

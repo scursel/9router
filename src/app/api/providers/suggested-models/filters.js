@@ -4,7 +4,15 @@ const KNOWN_FREE_OPENCODE_MODELS = ["big-pickle"];
 // Upstream returns "Model is unavailable" for this id (2026-09-02) — re-enable when fixed
 const DEAD_FREE_OPENCODE_MODELS = new Set(["deepseek-v4-flash-free"]);
 
+// Generic OpenAI /v1/models → passthrough; used for b.ai, OrcaRouter, Dahl,
+// Alibaba MaaS gateways, and providers whose full catalog is dynamic.
+const openaiPassthrough = (models) =>
+  models
+    .filter((m) => typeof m?.id === "string" && m.id.trim() !== "")
+    .map((m) => ({ id: m.id, name: m.name || m.id, contextLength: m.context_length }));
+
 export const FILTERS = {
+  openai: openaiPassthrough,
   "openrouter-free": (models) =>
     models
       .filter(
