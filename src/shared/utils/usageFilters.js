@@ -33,22 +33,22 @@ export function usageItemMatchesCombo(item, combo) {
   });
 }
 
-export function filterUsageMap(dataMap, { providerFilter, comboFilter, combos }) {
-  if (!dataMap) return {};
-  const wantProvider = providerFilter && providerFilter !== "all"
-    ? normalizeProviderId(providerFilter)
-    : null;
-  const wantCombo = comboFilter && comboFilter !== "all"
-    ? (combos || []).find((c) => c.name === comboFilter)
-    : null;
-
-  if (!wantProvider && !wantCombo) return dataMap;
-
+/**
+ * Build usage rows attributed to combos that actually saw traffic.
+ * A model row can appear under every combo that lists it as a member.
+ * Combos with zero matching usage are omitted.
+ */
+export function buildComboUsageMap(byModel, combos = []) {
   const out = {};
-  for (const [key, data] of Object.entries(dataMap)) {
-    if (wantProvider && normalizeProviderId(data?.provider) !== wantProvider) continue;
-    if (wantCombo && !usageItemMatchesCombo(data, wantCombo)) continue;
-    out[key] = data;
+  for (const combo of combos) {
+    if (!combo?.name || !Array.isArray(combo.models) || combo.models.length === 0) continue;
+    for (const [key, data] of Object.entries(byModel || {})) {
+      if (!usageItemMatchesCombo(data, combo)) continue;
+      out[`${combo.name}|${key}`] = {
+        ...data,
+        comboName: combo.name,
+      };
+    }
   }
   return out;
 }

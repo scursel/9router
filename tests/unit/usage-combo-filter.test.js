@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterUsageMap, usageItemMatchesCombo } from "../../src/shared/utils/usageFilters.js";
+import { buildComboUsageMap, usageItemMatchesCombo } from "../../src/shared/utils/usageFilters.js";
 
 describe("usageItemMatchesCombo", () => {
   const combo = {
@@ -22,19 +22,21 @@ describe("usageItemMatchesCombo", () => {
   });
 });
 
-describe("filterUsageMap", () => {
-  const data = {
-    a: { provider: "bai", rawModel: "claude-sonnet-4", requests: 2 },
-    b: { provider: "orcarouter", rawModel: "free", requests: 1 },
-    c: { provider: "claude", rawModel: "claude-opus-4", requests: 9 },
+describe("buildComboUsageMap", () => {
+  const byModel = {
+    "claude-sonnet-4 (bai)": { provider: "bai", rawModel: "claude-sonnet-4", requests: 2, cost: 0.1 },
+    "free (orcarouter)": { provider: "orcarouter", rawModel: "free", requests: 1, cost: 0 },
+    "claude-opus-4 (claude)": { provider: "claude", rawModel: "claude-opus-4", requests: 9, cost: 1 },
   };
 
-  it("filters by provider", () => {
-    expect(Object.keys(filterUsageMap(data, { providerFilter: "bai", comboFilter: "all", combos: [] }))).toEqual(["a"]);
-  });
-
-  it("filters by combo members", () => {
-    const combos = [{ name: "cheap-stack", models: ["bai/claude-sonnet-4", "orcarouter/free"] }];
-    expect(Object.keys(filterUsageMap(data, { providerFilter: "all", comboFilter: "cheap-stack", combos }))).toEqual(["a", "b"]);
+  it("only includes combos that have member usage", () => {
+    const combos = [
+      { name: "cheap-stack", models: ["bai/claude-sonnet-4", "orcarouter/free"] },
+      { name: "unused-stack", models: ["bai/never-used"] },
+    ];
+    const map = buildComboUsageMap(byModel, combos);
+    const comboNames = [...new Set(Object.values(map).map((r) => r.comboName))];
+    expect(comboNames).toEqual(["cheap-stack"]);
+    expect(Object.keys(map)).toHaveLength(2);
   });
 });
