@@ -275,9 +275,13 @@ export function getComboModelsFromData(modelStr, combosData) {
  * @param {string} [options.comboName] - Name of the combo (for round-robin tracking)
  * @param {string} [options.comboStrategy] - Strategy: "fallback" or "round-robin"
  * @param {number|string} [options.comboStickyLimit=1] - Requests per combo model before switching
+ * @param {boolean} [options.autoSwitch=true] - Capability auto-switch (chat)
+ * @param {Function} [options.shouldContinueOnSuccess] - Optional: (response, ctx) => boolean|Promise<boolean>.
+ *   When true, a 2xx response is treated as soft-miss and the next member is tried.
+ *   Default undefined preserves historical behavior (return on first 2xx).
  * @returns {Promise<Response>}
  */
-export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true }) {
+export async function handleComboChat({ body, models, handleSingleModel, log, comboName, comboStrategy, comboStickyLimit = 1, autoSwitch = true, shouldContinueOnSuccess }) {
   // Apply rotation strategy if enabled
   let rotatedModels = getRotatedModels(models, comboName, comboStrategy, comboStickyLimit);
 
@@ -296,6 +300,7 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
   let lastError = null;
   let earliestRetryAfter = null;
   let lastStatus = null;
+  let lastSoftSuccess = null;
 
   for (let i = 0; i < rotatedModels.length; i++) {
     const modelStr = rotatedModels[i];
@@ -304,8 +309,21 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
     try {
       const result = await handleSingleModel(body, modelStr);
       
-      // Success (2xx) - return response
+      // Success (2xx) - return response unless an opt-in soft-continue policy says otherwise
       if (result.ok) {
+        if (typeof shouldContinueOnSuccess === "function") {
+          let cont = false;
+          try {
+            cont = await shouldContinueOnSuccess(result, { modelStr, index: i, models: rotatedModels });
+          } catch {
+            cont = false;
+          }
+          if (cont) {
+            lastSoftSuccess = result;
+            log.warn("COMBO", `Model ${modelStr} soft-miss (continue policy), trying next`);
+            continue;
+          }
+        }
         log.info("COMBO", `Model ${modelStr} succeeded`);
         return result;
       }
@@ -358,6 +376,12 @@ export async function handleComboChat({ body, models, handleSingleModel, log, co
       if (!lastStatus) lastStatus = 500;
       log.warn("COMBO", `Model ${modelStr} threw error, trying next`, { error: lastError });
     }
+  }
+
+  // All members soft-missed (e.g. empty web results) with no hard error — return last 2xx.
+  if (lastSoftSuccess && lastError == null) {
+    log.info("COMBO", "All models soft-missed; returning last success envelope");
+    return lastSoftSuccess;
   }
 
   // All models failed

@@ -23,6 +23,10 @@ vi.mock("@/sse/services/auth.js", () => ({
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   getCombos: mocks.getCombos,
+  getComboByName: vi.fn(async () => null),
+  getProviderConnections: vi.fn(async () => []),
+  getModelAliases: vi.fn(async () => ({})),
+  getProviderNodes: vi.fn(async () => []),
 }));
 
 vi.mock("open-sse/handlers/fetch/index.js", () => ({

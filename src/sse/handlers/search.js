@@ -6,7 +6,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { AI_PROVIDERS } from "@/shared/constants/providers.js";
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -14,6 +14,8 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { getComboModels } from "../services/model.js";
+import { getComboByName } from "@/lib/localDb";
+import { assertWebComboKind, resolveWebProviderId, runWebCombo } from "../services/webRouting.js";
 
 /**
  * Handle web search request for the SSE/Next.js server.
@@ -73,18 +75,26 @@ export async function handleSearch(request) {
   // Use the local catalog-aware path so unavailable members are skipped (same as chat).
   const comboModels = await getComboModels(providerInput);
   if (comboModels) {
+    const combo = await getComboByName(providerInput);
+    const kindCheck = assertWebComboKind(combo, providerInput, "webSearch");
+    if (!kindCheck.ok) {
+      log.warn("SEARCH", kindCheck.error);
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, kindCheck.error);
+    }
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("SEARCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
+    return runWebCombo({
+      capability: "webSearch",
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
-      log,
       comboName: providerInput,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      handleSingleProvider: (b, m) => handleSingleProviderSearch(b, m, request, apiKey, settings),
+      handleComboChat,
+      log,
     });
   }
 
@@ -93,21 +103,14 @@ export async function handleSearch(request) {
 
 async function handleSingleProviderSearch(body, providerInput, request, apiKey, settings) {
   const query = body.query;
-  const providerId = resolveProviderId(providerInput);
+  const resolved = resolveWebProviderId(providerInput, "webSearch");
+  if (!resolved.ok) {
+    log.warn("SEARCH", resolved.error, { provider: providerInput });
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, resolved.error);
+  }
+  const providerId = resolved.providerId;
   const resolvedProvider = AI_PROVIDERS[providerId];
-
-  if (!resolvedProvider) {
-    log.warn("SEARCH", "Unknown provider", { provider: providerInput });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
-  }
-
   const providerConfig = resolvedProvider.searchConfig;
-  const supportsSearch = !!providerConfig || !!resolvedProvider.searchViaChat;
-
-  if (!supportsSearch) {
-    log.warn("SEARCH", "Provider does not support web search", { provider: providerId });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Provider ${providerId} does not support web search`);
-  }
 
   if (providerInput !== providerId) {
     log.info("ROUTING", `${providerInput} → ${providerId}`);

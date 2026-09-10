@@ -6,7 +6,7 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
-import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js";
+import { AI_PROVIDERS } from "@/shared/constants/providers.js";
 import { handleFetchCore } from "open-sse/handlers/fetch/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -14,7 +14,9 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import { getComboModels } from "../services/model.js";
+import { getComboByName } from "@/lib/localDb";
 import { assertPublicUrlResolved } from "@/shared/utils/ssrfGuard.js";
+import { assertWebComboKind, resolveWebProviderId, runWebCombo } from "../services/webRouting.js";
 
 /**
  * Handle web fetch (URL extraction) request for the SSE/Next.js server.
@@ -93,18 +95,26 @@ export async function handleFetch(request) {
   // Use the local catalog-aware path so unavailable members are skipped (same as chat).
   const comboModels = await getComboModels(providerInput);
   if (comboModels) {
+    const combo = await getComboByName(providerInput);
+    const kindCheck = assertWebComboKind(combo, providerInput, "webFetch");
+    if (!kindCheck.ok) {
+      log.warn("FETCH", kindCheck.error);
+      return errorResponse(HTTP_STATUS.BAD_REQUEST, kindCheck.error);
+    }
     const comboStrategies = settings.comboStrategies || {};
     const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("FETCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
+    return runWebCombo({
+      capability: "webFetch",
       body,
       models: comboModels,
-      handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings),
-      log,
       comboName: providerInput,
       comboStrategy,
-      comboStickyLimit
+      comboStickyLimit,
+      handleSingleProvider: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings),
+      handleComboChat,
+      log,
     });
   }
 
@@ -115,19 +125,14 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
   const targetUrl = body.url;
   const format = body.format;
   const maxCharacters = body.max_characters;
-  const providerId = resolveProviderId(providerInput);
+  const resolved = resolveWebProviderId(providerInput, "webFetch");
+  if (!resolved.ok) {
+    log.warn("FETCH", resolved.error, { provider: providerInput });
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, resolved.error);
+  }
+  const providerId = resolved.providerId;
   const resolvedProvider = AI_PROVIDERS[providerId];
-
-  if (!resolvedProvider) {
-    log.warn("FETCH", "Unknown provider", { provider: providerInput });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Unknown provider: ${providerInput}`);
-  }
-
   const providerConfig = resolvedProvider.fetchConfig;
-  if (!providerConfig) {
-    log.warn("FETCH", "Provider does not support web fetch", { provider: providerId });
-    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Provider ${providerId} does not support web fetch`);
-  }
 
   if (providerInput !== providerId) {
     log.info("ROUTING", `${providerInput} → ${providerId}`);
