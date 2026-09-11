@@ -99,16 +99,34 @@ export async function getComboModels(modelStr) {
 // user's fallback order or aliases. Matching is prefix-aware: gateways report
 // ids like `anthropic/claude-sonnet-5` while the member may carry only the
 // trailing segment.
-function catalogListsModel(catalogModels, providerId, model) {
+function catalogEntryIdMatches(entry, model) {
+  const candidate = String(entry?.id || "");
+  if (!candidate) return false;
   const bare = model.includes("/") ? model.split("/").pop() : model;
+  if (candidate === model || candidate === bare) return true;
+  const candidateBare = candidate.includes("/") ? candidate.split("/").pop() : candidate;
+  return candidateBare === bare;
+}
+
+function catalogListsModel(catalogModels, providerId, model) {
   return (catalogModels || []).some((entry) => {
     if (!entry || entry.availability === "unavailable") return false;
-    const candidate = String(entry.id || "");
-    if (!candidate) return false;
-    if (candidate === model || candidate === bare) return true;
-    const candidateBare = candidate.includes("/") ? candidate.split("/").pop() : candidate;
-    return candidateBare === bare;
+    return catalogEntryIdMatches(entry, model);
   });
+}
+
+function catalogKnowsModel(catalogModels, model) {
+  return (catalogModels || []).some((entry) => catalogEntryIdMatches(entry, model));
+}
+
+function connectionHasSyncedCatalog(connection) {
+  // A failed first sync writes `{ models: [], lastError }` with no lastSuccessAt.
+  // That is not a catalog: treating it as one would strip every combo member.
+  return Array.isArray(connection.modelCatalog?.models) && Boolean(connection.modelCatalog.lastSuccessAt);
+}
+
+function providerIsPassthrough(providerId) {
+  return REGISTRY.some((entry) => entry.id === providerId && entry.passthroughModels === true);
 }
 
 async function filterUnavailableComboMembers(models) {
@@ -118,13 +136,23 @@ async function filterUnavailableComboMembers(models) {
     if (!info?.provider || !info?.model) return member;
     const accounts = connections.filter((connection) => connection.provider === info.provider);
     if (!accounts.length) return member;
-    const catalogued = accounts.filter((connection) => Array.isArray(connection.modelCatalog?.models));
+    const catalogued = accounts.filter(connectionHasSyncedCatalog);
     if (!catalogued.length) return member;
     const availableSomewhere = catalogued.some((connection) =>
       catalogListsModel(connection.modelCatalog.models, info.provider, info.model)
     );
+    if (availableSomewhere) return member;
+    // Passthrough providers accept ids the listing never heard of (Cline
+    // remaps, user-typed aggregators). Only drop a member that the catalog
+    // actually listed and then marked unavailable.
+    if (providerIsPassthrough(info.provider)) {
+      const knownSomewhere = catalogued.some((connection) =>
+        catalogKnowsModel(connection.modelCatalog.models, info.model)
+      );
+      if (!knownSomewhere) return member;
+    }
     const unverifiedSomewhere = accounts.length > catalogued.length;
-    return availableSomewhere || unverifiedSomewhere ? member : null;
+    return unverifiedSomewhere ? member : null;
   }));
   // No fallback to the original list: when every member is confirmed
   // unavailable the caller (handleComboChat) returns a clear 503 instead of

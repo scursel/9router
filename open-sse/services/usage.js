@@ -76,6 +76,8 @@ const USAGE_HANDLERS = {
   "qwen-cloud-token-plan": (c) => getAlibabaTokenPlanUsage(c),
 };
 
+export const USAGE_IMPLEMENTED_PROVIDERS = Object.keys(USAGE_HANDLERS);
+
 export async function getUsageForProvider(connection, proxyOptions = null, options = {}) {
   // connectionId originates from database record (connection.id or connection.connectionId)
   const connectionId = String(connection.connectionId || connection.id || "").trim();

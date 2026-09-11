@@ -8,6 +8,7 @@ import CapacityBadges from "./CapacityBadges";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, AI_PROVIDERS, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, getProviderAlias } from "@/shared/constants/providers";
+import { modelsFromStoredCatalog, pickerModelLabel, resolvePickerModels } from "@/shared/utils/pickerCatalog";
 
 // Provider order: OAuth first, then Free Tier, then API Key (matches dashboard/providers)
 const PROVIDER_ORDER = [
@@ -323,9 +324,15 @@ export default function ModelSelectModal({
           hasModels: mergedModels.length > 0,
         };
       } else {
-        const hardcodedModels = providerId === "cursor" && cursorModels.length > 0
-          ? cursorModels
-          : getModelsByProviderId(providerId);
+        // Account catalog first: routing strips combo members missing from a
+        // fully catalogued account, so offering stale registry ids (Token Plan
+        // qwen3.8-max-preview vs live qwen3.8-max) lets the user save a member
+        // that will never run. Cursor still overrides via live fetch.
+        const hardcodedModels = resolvePickerModels({
+          liveModels: providerId === "cursor" ? cursorModels : [],
+          storedModels: modelsFromStoredCatalog(activeProviders, providerId),
+          staticModels: getModelsByProviderId(providerId),
+        });
         const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
 
         // Custom models: if no hardcoded models (e.g. openrouter), show all aliases for this provider
@@ -349,7 +356,7 @@ export default function ModelSelectModal({
           .map((m) => ({ id: m.id, name: m.name || m.id, value: `${alias}/${m.id}`, isCustom: true }));
 
         const merged = [
-          ...hardcodedModels.map((m) => ({ id: m.id, name: m.name, value: `${alias}/${m.id}`, kind: getModelKind(m) })),
+          ...hardcodedModels.map((m) => ({ id: m.id, name: pickerModelLabel(m), value: `${alias}/${m.id}`, kind: getModelKind(m) })),
           ...customAliasModels,
           ...customRegisteredModels,
         ];
@@ -474,7 +481,7 @@ export default function ModelSelectModal({
       {/* Info bar */}
       <div className="flex items-center gap-2 mb-3 px-2.5 py-2 bg-primary/8 border border-primary/20 rounded-lg text-xs text-text-muted">
         <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: "14px" }}>info</span>
-        <span>Click to add, click again to remove. Changes are saved automatically.</span>
+        <span>Click to add, click again to remove.</span>
       </div>
 
       {/* Search - compact */}

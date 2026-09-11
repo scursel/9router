@@ -21,6 +21,11 @@
 - **CLI**: export packed `.tgz` directly into workspace root instead of parent directory
 
 ## Enhanced
+- **Usage**: hide quota cards for providers without a collector; group same-provider accounts; raise the usage client page size to 500
+- **Providers**: Import models / Import free on Available Models; Sync refreshes the catalog and no longer duplicates Import
+- **Combos**: Add Model picker uses the account catalog instead of stale registry ids (Token Plan `qwen3.8-max` / `qwen3.8-flash`)
+- **Combos**: passthrough providers (Cline) keep unlisted combo members; only drop ids the catalog marked unavailable
+- **Cline**: `modelsFetcher` for import/sync without stripping remapped `cl/...` members after the first catalog sync
 - **Models**: sync OpenRouter/OpenCode/Kilo/ClinePass/NVIDIA catalogs so Import free works beyond OrcaRouter
 - **Providers**: Import free button on connections that expose free catalog models
 - **Usage**: resolve provider labels (registry name, custom node name, short Custom OpenAI id for deleted nodes)

@@ -77,4 +77,44 @@ describe("combo member filtering against synced catalogs", () => {
     getComboByName.mockResolvedValue({ name: "mix", models: ["myalias", "local-qwen/model"] });
     expect(await getComboModels("mix")).toEqual(["myalias", "local-qwen/model"]);
   });
+
+  it("does not treat a failed first sync (empty models, no lastSuccessAt) as a catalog", async () => {
+    getComboByName.mockResolvedValue({ name: "mix", models: ["cl/z-ai/glm-5.2"] });
+    getProviderConnections.mockResolvedValue([
+      { id: "cline-1", provider: "cline", isActive: true, modelCatalog: { models: [], lastError: "network error", lastAttemptAt: new Date().toISOString() } },
+    ]);
+    expect(await getComboModels("mix")).toEqual(["cl/z-ai/glm-5.2"]);
+  });
+
+  it("keeps unlisted passthrough members after a successful Cline catalog sync", async () => {
+    getComboByName.mockResolvedValue({ name: "mix", models: ["cl/z-ai/glm-5.2", "cl/anthropic/claude-sonnet-4.6"] });
+    getProviderConnections.mockResolvedValue([
+      catalogConn("cline", [
+        { id: "anthropic/claude-sonnet-4.6", availability: "available" },
+        { id: "openai/gpt-5.4", availability: "available" },
+      ]),
+    ]);
+    expect(await getComboModels("mix")).toEqual(["cl/z-ai/glm-5.2", "cl/anthropic/claude-sonnet-4.6"]);
+  });
+
+  it("still strips a passthrough member the catalog listed as unavailable", async () => {
+    getComboByName.mockResolvedValue({ name: "mix", models: ["cl/anthropic/claude-sonnet-4.6"] });
+    getProviderConnections.mockResolvedValue([
+      catalogConn("cline", [
+        { id: "anthropic/claude-sonnet-4.6", availability: "unavailable", missingSyncs: 2 },
+      ]),
+    ]);
+    expect(await getComboModels("mix")).toEqual([]);
+  });
+
+  it("still strips unknown ids on non-passthrough providers (Token Plan)", async () => {
+    getComboByName.mockResolvedValue({ name: "mix", models: ["alitp-intl/qwen3.8-max-preview"] });
+    getProviderConnections.mockResolvedValue([
+      catalogConn("alitp-intl", [
+        { id: "qwen3.8-max", availability: "available" },
+        { id: "qwen3.8-flash", availability: "available" },
+      ]),
+    ]);
+    expect(await getComboModels("mix")).toEqual([]);
+  });
 });

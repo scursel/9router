@@ -528,10 +528,19 @@ export async function GET(request, { params }) {
 
     const config = PROVIDER_MODELS_CONFIG[connection.provider];
     if (!config) {
-      return NextResponse.json(
-        { error: `Provider ${connection.provider} does not support models listing` },
-        { status: 400 }
-      );
+      const { listConnectionModels } = await import("@/lib/modelSync/connectionCatalog.js");
+      const listed = await listConnectionModels(connection);
+      if (listed.error) {
+        return NextResponse.json(
+          { error: listed.error },
+          { status: listed.status || 400 },
+        );
+      }
+      return NextResponse.json({
+        provider: connection.provider,
+        connectionId: connection.id,
+        models: listed.models,
+      });
     }
 
     // Config-driven custom resolver path (OAuth refresh, non-OpenAI shape, etc.)

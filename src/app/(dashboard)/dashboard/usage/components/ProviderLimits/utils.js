@@ -7,9 +7,9 @@ export const REFRESH_INTERVAL_MS = 60000;
 export const CLAUDE_REFRESH_INTERVAL_MS = 600000;
 export const DEPLETED_QUOTA_THRESHOLD = 5;
 export const AUTO_REFRESH_STORAGE_KEY = "quotaAutoRefresh";
-export const CONNECTIONS_PAGE_SIZE = 20;
-export const ACCOUNT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 export const ACCOUNT_PAGE_SIZE_MAX = 500;
+export const CONNECTIONS_PAGE_SIZE = ACCOUNT_PAGE_SIZE_MAX;
+export const ACCOUNT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100, ACCOUNT_PAGE_SIZE_MAX];
 export const ACCOUNT_FILTER_OPTIONS = [
   { value: "all", label: "All accounts" },
   { value: "active", label: "Active" },
@@ -36,6 +36,14 @@ export function getConnectionQuotaRemaining(connection, quotaData) {
   return Number.POSITIVE_INFINITY;
 }
 
+export function shouldShowQuotaCard({ loading = false, error = null, quota = null } = {}) {
+  if (error) return true;
+  const quotas = Array.isArray(quota?.quotas) ? quota.quotas : [];
+  if (quotas.some((row) => row && row.name !== "error")) return true;
+  if (quota) return false;
+  return Boolean(loading);
+}
+
 // Stable group-by-provider: first-seen provider order, original order within group.
 function groupByProviderStable(connections) {
   const seen = new Map();
@@ -45,6 +53,52 @@ function groupByProviderStable(connections) {
     seen.get(key).push(conn);
   }
   return Array.from(seen.values()).flat();
+}
+
+function getEarliestResetTime(connection, quotaData) {
+  const resetTimes = (quotaData[connection.id]?.quotas || [])
+    .map((quota) =>
+      quota.resetAt
+        ? new Date(quota.resetAt).getTime()
+        : Number.POSITIVE_INFINITY,
+    )
+    .filter((time) => Number.isFinite(time));
+  return resetTimes.length > 0
+    ? Math.min(...resetTimes)
+    : Number.POSITIVE_INFINITY;
+}
+
+function groupByProviderThenExpiry(connections, quotaData) {
+  const groups = new Map();
+  for (const conn of connections) {
+    const key = conn.provider || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(conn);
+  }
+
+  return Array.from(groups.entries())
+    .map(([provider, accounts]) => {
+      const sortedAccounts = [...accounts].sort((a, b) => {
+        const expiryDiff =
+          getEarliestResetTime(a, quotaData) - getEarliestResetTime(b, quotaData);
+        if (expiryDiff !== 0) return expiryDiff;
+        return (getConnectionLabel(a) || "").localeCompare(
+          getConnectionLabel(b) || "",
+        );
+      });
+      return {
+        provider,
+        accounts: sortedAccounts,
+        groupExpiry: Math.min(
+          ...sortedAccounts.map((account) => getEarliestResetTime(account, quotaData)),
+        ),
+      };
+    })
+    .sort((a, b) => {
+      if (a.groupExpiry !== b.groupExpiry) return a.groupExpiry - b.groupExpiry;
+      return a.provider.localeCompare(b.provider);
+    })
+    .flatMap((group) => group.accounts);
 }
 
 export function sortVisibleConnections(
@@ -69,29 +123,8 @@ export function sortVisibleConnections(
     });
   }
 
-  if (!expiringFirst) return groupByProviderStable(connections);
-
-  const getEarliestResetTime = (connection) => {
-    const resetTimes = (quotaData[connection.id]?.quotas || [])
-      .map((quota) =>
-        quota.resetAt
-          ? new Date(quota.resetAt).getTime()
-          : Number.POSITIVE_INFINITY,
-      )
-      .filter((time) => Number.isFinite(time));
-    return resetTimes.length > 0
-      ? Math.min(...resetTimes)
-      : Number.POSITIVE_INFINITY;
-  };
-
-  return [...connections].sort((a, b) => {
-    const expiryDiff = getEarliestResetTime(a) - getEarliestResetTime(b);
-    if (expiryDiff !== 0) return expiryDiff;
-    return (
-      (a.provider || "").localeCompare(b.provider || "") ||
-      (getConnectionLabel(a) || "").localeCompare(getConnectionLabel(b) || "")
-    );
-  });
+  if (expiringFirst) return groupByProviderThenExpiry(connections, quotaData);
+  return groupByProviderStable(connections);
 }
 
 export function buildLoadingState(connections) {

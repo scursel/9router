@@ -4,7 +4,10 @@ import { useState } from "react";
 import PropTypes from "prop-types";
 import { Button } from "@/shared/components";
 import { getProviderCustomModelRows } from "@/shared/utils/providerCustomModels";
-function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, comboNames = [] }) {
+import { collectImportableModels } from "@/shared/utils/importProviderModels";
+import ImportModelsButtons from "./ImportModelsButtons";
+
+function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias, onTest, testStatus, isTesting, comboNames = [], selectable = false, selected = false, onToggleSelect }) {
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
     : testStatus === "error"
@@ -19,6 +22,15 @@ function CompatibleModelRow({ modelId, fullModel, copied, onCopy, onDeleteAlias,
 
   return (
     <div className={`flex items-center gap-3 p-3 rounded-lg border ${borderColor} hover:bg-sidebar/50`}>
+      {selectable && (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Select ${modelId}`}
+          className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-primary focus:ring-primary"
+        />
+      )}
       <span
         className="material-symbols-outlined text-base text-text-muted"
         style={iconColor ? { color: iconColor } : undefined}
@@ -83,6 +95,8 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   const [importing, setImporting] = useState(false);
   const [testingModelId, setTestingModelId] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   const handleTestModel = async (modelId) => {
     if (testingModelId) return;
@@ -128,7 +142,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
     }
   };
 
-  const handleImport = async () => {
+  const handleImport = async ({ freeOnly = false } = {}) => {
     if (importing) return;
     const activeConnection = connections.find((conn) => conn.isActive !== false);
     if (!activeConnection) return;
@@ -146,16 +160,19 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         alert("No models returned from /models.");
         return;
       }
+      const toAdd = collectImportableModels({
+        models,
+        existingIds: new Set(allModels.map((entry) => entry.id)),
+        prefixes: [providerStorageAlias],
+        freeOnly,
+      });
       let importedCount = 0;
-      for (const model of models) {
-        const modelId = model.id || model.name || model.model;
-        if (!modelId) continue;
-        if (allModels.some((entry) => entry.id === modelId)) continue;
-        await onAddCustomModel(modelId);
+      for (const model of toAdd) {
+        await onAddCustomModel(model.id);
         importedCount += 1;
       }
       if (importedCount === 0) {
-        alert("No new models were added.");
+        alert(freeOnly ? "No new free models were added." : "No new models were added.");
       }
     } catch (error) {
       console.log("Error importing models:", error);
@@ -165,6 +182,26 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
   };
 
   const canImport = connections.some((conn) => conn.isActive !== false);
+
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const rows = allModels.filter((model) => selectedIds.has(model.id));
+    for (const model of rows) {
+      if (model.source === "custom") await onDeleteCustomModel(model.id);
+      else if (model.alias) await onDeleteAlias(model.alias);
+    }
+    setSelectedIds(new Set());
+    setSelecting(false);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -188,9 +225,42 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
         <Button size="sm" icon="add" onClick={handleAdd} disabled={!newModel.trim() || adding}>
           {adding ? "Adding..." : "Add"}
         </Button>
-        <Button size="sm" variant="secondary" icon="download" onClick={handleImport} disabled={!canImport || importing}>
-          {importing ? "Importing..." : "Import from /models"}
-        </Button>
+        <ImportModelsButtons
+          canImport={canImport}
+          importing={importing}
+          onImportAll={() => handleImport({ freeOnly: false })}
+          onImportFree={() => handleImport({ freeOnly: true })}
+        />
+        {allModels.length > 0 && (
+          <Button
+            size="sm"
+            variant={selecting ? "secondary" : "ghost"}
+            icon="checklist"
+            onClick={() => {
+              setSelecting((prev) => !prev);
+              setSelectedIds(new Set());
+            }}
+          >
+            {selecting ? "Cancel" : "Select"}
+          </Button>
+        )}
+        {selecting && allModels.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (selectedIds.size === allModels.length) setSelectedIds(new Set());
+              else setSelectedIds(new Set(allModels.map((model) => model.id)));
+            }}
+          >
+            {selectedIds.size === allModels.length ? "Clear" : "Select all"}
+          </Button>
+        )}
+        {selecting && selectedIds.size > 0 && (
+          <Button size="sm" variant="danger" icon="delete" onClick={handleBulkDelete}>
+            Delete {selectedIds.size}
+          </Button>
+        )}
       </div>
 
       {!canImport && (
@@ -213,6 +283,9 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
               testStatus={modelTestResults[id]}
               isTesting={testingModelId === id}
               comboNames={typeof comboNamesFor === "function" ? comboNamesFor([`${providerDisplayAlias}/${id}`, `${providerStorageAlias}/${id}`, ...(alias ? [alias] : [])]) : []}
+              selectable={selecting}
+              selected={selectedIds.has(id)}
+              onToggleSelect={() => toggleSelected(id)}
             />
           ))}
         </div>

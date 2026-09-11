@@ -19,6 +19,7 @@ import {
   isConnectionCatalogStale,
   normalizedModels,
   resolveModelsUrl,
+  listConnectionModels,
   syncConnectionCatalog,
 } from "../../src/lib/modelSync/connectionCatalog.js";
 import {
@@ -156,6 +157,41 @@ describe("resolveModelsUrl", () => {
       .toBe("https://api.cline.bot/api/v1/models");
     expect(resolveModelsUrl({ provider: "nvidia", providerSpecificData: {} }))
       .toBe("https://integrate.api.nvidia.com/v1/models");
+  });
+
+  it("lists Cline models from the same Cline /v1/models host as chat", () => {
+    expect(resolveModelsUrl({ provider: "cline", providerSpecificData: {} }))
+      .toBe("https://api.cline.bot/api/v1/models");
+  });
+});
+
+describe("listConnectionModels", () => {
+  it("fetches the registry modelsFetcher URL with the connection token", async () => {
+    installFetch(async (url, init) => {
+      expect(String(url)).toBe("https://api.cline.bot/api/v1/models");
+      expect(init.headers.Authorization).toBe("Bearer cline-token");
+      return new Response(JSON.stringify({
+        data: [
+          { id: "anthropic/claude-sonnet-4.6", pricing: { prompt: "0", completion: "0" } },
+          { id: "openai/gpt-5.4", pricing: { prompt: "0.001", completion: "0.002" } },
+        ],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const result = await listConnectionModels({
+      id: "conn-cline",
+      provider: "cline",
+      accessToken: "cline-token",
+      providerSpecificData: {},
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.models.map((m) => m.id)).toEqual([
+      "anthropic/claude-sonnet-4.6",
+      "openai/gpt-5.4",
+    ]);
+    expect(result.models[0].tier).toBe("free");
+    expect(result.models[1].tier).toBe("paid");
   });
 });
 

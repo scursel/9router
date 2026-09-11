@@ -25,8 +25,4 @@ export default {
   ],
   modelsFetcher: { url: "https://inference.dahl.global/v1/models", type: "openai" },
   passthroughModels: true,
-  features: {
-    usage: true,
-    usageApikey: true,
-  },
 };

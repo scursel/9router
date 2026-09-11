@@ -1,6 +1,9 @@
 import { getProviderConnections, getProviderConnectionById, updateProviderConnection } from "@/models";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
+import { classifyTier } from "@/shared/utils/modelTier.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
+
+export { classifyTier };
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const RETRY_DELAY_MS = 30 * 60 * 1000;
@@ -14,58 +17,6 @@ function toNumber(value) {
   if (value === undefined || value === null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-// Precedence (documented in docs/MODEL_SYNC_CATALOG.md):
-//  1. provider-reported price (pricing.prompt/completion, input_price/output_price)
-//  2. models.dev overlay in route layer (provider cost, else OpenRouter fallback)
-//  3. explicit markers: `:free` / `-free` suffix or free/is_free field
-//  4. curated per-provider rules (ORCAROUTER_FREE_IDS below)
-//  5. unknown — never default to paid on missing data
-const ORCAROUTER_FREE_IDS = new Set(["orcarouter/free"]);
-
-export function classifyTier(row, { providerId = null } = {}) {
-  const id = String(row?.id ?? row?.model ?? row?.name ?? "");
-  const promptRaw = row?.pricing?.prompt ?? row?.input_price;
-  const completionRaw = row?.pricing?.completion ?? row?.output_price;
-  const hasPromptField = promptRaw !== undefined;
-  const hasCompletionField = completionRaw !== undefined;
-  const hasRequest = row?.pricing?.request !== undefined;
-  const p = hasPromptField ? toNumber(promptRaw) : null;
-  const c = hasCompletionField ? toNumber(completionRaw) : null;
-
-  if (hasPromptField || hasCompletionField || hasRequest) {
-    // Per-request only (image-style) → credits.
-    if (hasRequest && !hasPromptField && !hasCompletionField) {
-      return { tier: "credits", tierSource: "provider-price" };
-    }
-
-    const anyPositive = (p !== null && p > 0) || (c !== null && c > 0);
-    if (anyPositive) {
-      return { tier: "paid", tierSource: "provider-price" };
-    }
-
-    const anyZero = p === 0 || c === 0;
-    if (anyZero) {
-      // Zero token side(s) plus a per-request fee is credits, not free.
-      if (hasRequest) return { tier: "credits", tierSource: "provider-price" };
-      return { tier: "free", tierSource: "provider-price" };
-    }
-
-    // Token fields present but unparseable; request fee still means credits.
-    if (hasRequest) return { tier: "credits", tierSource: "provider-price" };
-  }
-
-  if (row?.free === true || row?.is_free === true) {
-    return { tier: "free", tierSource: "provider-flag" };
-  }
-  if (id.endsWith(":free") || id.endsWith("-free")) {
-    return { tier: "free", tierSource: "id-suffix" };
-  }
-  if (providerId === "orcarouter" && ORCAROUTER_FREE_IDS.has(id)) {
-    return { tier: "free", tierSource: "curated" };
-  }
-  return { tier: "unknown", tierSource: "unknown" };
 }
 
 function inferKindFromId(id) {
@@ -207,6 +158,45 @@ async function fetchWithRetry(url, { headers }) {
     }
   }
   throw lastError || new Error("model listing failed");
+}
+
+export async function listConnectionModels(connection) {
+  const url = resolveModelsUrl(connection);
+  if (!url) {
+    return {
+      error: `Provider ${connection?.provider || "unknown"} does not support models listing`,
+      status: 400,
+      models: [],
+    };
+  }
+  try {
+    assertPublicUrl(url);
+  } catch {
+    return { error: "models endpoint is not a public URL", status: 400, models: [] };
+  }
+
+  let response;
+  try {
+    ({ response } = await fetchWithRetry(url, { headers: authHeaders(connection) }));
+  } catch (error) {
+    return { error: error?.message || "network error", status: 502, models: [] };
+  }
+  if (!response.ok) {
+    return {
+      error: `Failed to fetch models: ${response.status}`,
+      status: response.status,
+      models: [],
+    };
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    return { error: "model listing returned invalid JSON", status: 502, models: [] };
+  }
+  return {
+    models: normalizedModels(payload, { providerId: connection.provider }),
+  };
 }
 
 export async function syncConnectionCatalog(connectionOrId) {

@@ -714,13 +714,15 @@ function ComboFormModal({ isOpen, combo, onClose, onSave, activeProviders, kindF
   };
 
   const handleAddModel = (model) => {
-    if (!models.includes(model.value)) {
-      setModels([...models, model.value]);
-    }
+    const value = model?.value;
+    if (!value || models.includes(value)) return;
+    setModels([...models, value]);
   };
 
   const handleDeselectModel = (model) => {
-    setModels(models.filter((m) => m !== model.value));
+    const value = model?.value;
+    if (!value) return;
+    setModels(models.filter((m) => m !== value));
   };
 
   const handleRemoveModel = (index) => {

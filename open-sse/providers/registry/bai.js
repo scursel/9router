@@ -21,8 +21,4 @@ export default {
   models: [],
   modelsFetcher: { url: "https://api.b.ai/v1/models", type: "openai" },
   passthroughModels: true,
-  features: {
-    usage: true,
-    usageApikey: true,
-  },
 };
