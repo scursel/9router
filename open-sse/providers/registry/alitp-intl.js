@@ -28,7 +28,8 @@ export default {
   // on the same host needs the account key (401 without one).
   modelsFetcher: { url: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models", type: "openai" },
   models: [
-    { id: "qwen3.8-max-preview", name: "Qwen3.8 Max Preview" },
+    { id: "qwen3.8-max", name: "Qwen3.8 Max" },
+    { id: "qwen3.8-flash", name: "Qwen3.8 Flash" },
     { id: "qwen3.7-max", name: "Qwen3.7 Max" },
     { id: "qwen3.7-plus", name: "Qwen3.7 Plus" },
     { id: "qwen3.6-flash", name: "Qwen3.6 Flash" },

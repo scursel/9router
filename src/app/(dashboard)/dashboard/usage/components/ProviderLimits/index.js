@@ -14,6 +14,7 @@ import {
   getConnectionLabel,
   getConnectionQuotaRemaining,
   sortVisibleConnections,
+  shouldShowQuotaCard,
   buildLoadingState,
   filterQuotaStateByConnections,
   getConnectionsEmptyMessage,
@@ -180,7 +181,7 @@ export default function ProviderLimits() {
           page: String(targetPage),
           pageSize: String(pageSize),
           accountStatus: accountFilter,
-          sort: "priority",
+          sort: "provider",
         });
 
         if (providerFilter !== "all") {
@@ -714,8 +715,14 @@ export default function ProviderLimits() {
         expiringFirst,
         providerFilter,
         quotaSortMode,
+      ).filter((conn) =>
+        shouldShowQuotaCard({
+          loading: loading[conn.id],
+          error: errors[conn.id],
+          quota: quotaData[conn.id],
+        }),
       ),
-    [connections, quotaData, expiringFirst, providerFilter, quotaSortMode],
+    [connections, quotaData, errors, loading, expiringFirst, providerFilter, quotaSortMode],
   );
 
   // Connection is depleted when any quota entry hit the threshold
@@ -1355,7 +1362,7 @@ export default function ProviderLimits() {
               >
                 {ACCOUNT_PAGE_SIZE_OPTIONS.map((option) => (
                   <option key={option} value={String(option)}>
-                    {option} / page
+                    {option === ACCOUNT_PAGE_SIZE_MAX ? "All" : `${option} / page`}
                   </option>
                 ))}
                 <option value="custom">Custom</option>

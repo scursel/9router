@@ -9,7 +9,14 @@ const DEAD_FREE_OPENCODE_MODELS = new Set(["deepseek-v4-flash-free"]);
 const openaiPassthrough = (models) =>
   models
     .filter((m) => typeof m?.id === "string" && m.id.trim() !== "")
-    .map((m) => ({ id: m.id, name: m.name || m.id, contextLength: m.context_length }));
+    .map((m) => ({
+      id: m.id,
+      name: m.name || m.id,
+      contextLength: m.context_length,
+      pricing: m.pricing,
+      free: m.free,
+      is_free: m.is_free ?? m.isFree,
+    }));
 
 export const FILTERS = {
   openai: openaiPassthrough,

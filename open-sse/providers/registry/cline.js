@@ -45,6 +45,8 @@ export default {
     { id: "google/gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
     { id: "kwaipilot/kat-coder-pro", name: "KAT Coder Pro" },
   ],
+  modelsFetcher: { url: "https://api.cline.bot/api/v1/models", type: "openai" },
+  passthroughModels: true,
   oauth: {
     appBaseUrl: "https://app.cline.bot",
     apiBaseUrl: "https://api.cline.bot",

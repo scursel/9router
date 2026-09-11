@@ -29,13 +29,15 @@ describe("Alibaba Token Plan provider", () => {
   it("exposes the models the plan actually serves", () => {
     const ids = (PROVIDER_MODELS["alitp-intl"] || []).map((m) => m.id);
     expect(ids).toEqual(expect.arrayContaining([
-      "qwen3.8-max-preview",
+      "qwen3.8-max",
+      "qwen3.8-flash",
       "qwen3.7-max",
       "qwen3.7-plus",
       "qwen3.6-flash",
       "glm-5.2",
       "deepseek-v4-pro",
     ]));
+    expect(ids).not.toContain("qwen3.8-max-preview");
   });
 
   it("keeps every registry id unique after adding the provider", () => {

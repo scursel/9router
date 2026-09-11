@@ -24,6 +24,13 @@
 - **Usage**: parse the Fable weekly limit from `limits[]` instead of fabricating a row (#3847)
 - **Auth**: set a 24h `maxAge` on the dashboard session cookie
 
+## Enhanced
+- **Usage**: hide quota cards for providers without a collector; group same-provider accounts; raise the usage client page size to 500
+- **Providers**: Import models / Import free on Available Models; Sync refreshes the catalog and no longer duplicates Import
+- **Combos**: Add Model picker uses the account catalog instead of stale registry ids (Token Plan `qwen3.8-max` / `qwen3.8-flash`)
+- **Combos**: passthrough providers (Cline) keep unlisted combo members; only drop ids the catalog marked unavailable
+- **Cline**: `modelsFetcher` for import/sync without stripping remapped `cl/...` members after the first catalog sync
+
 # v0.5.69 (2026-09-05)
 
 ## Features

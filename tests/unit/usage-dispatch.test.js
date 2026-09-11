@@ -37,4 +37,10 @@ describe("usage dispatch", () => {
       expect(res?.message).not.toBe(`Usage API not implemented for ${provider}`);
     }
   });
+
+  it("dahl has no usage collector, so the quota page must not treat it as implemented", async () => {
+    const { getUsageForProvider } = await load();
+    const res = await getUsageForProvider({ provider: "dahl", apiKey: "k" });
+    expect(res).toEqual({ message: "Usage API not implemented for dahl" });
+  });
 });

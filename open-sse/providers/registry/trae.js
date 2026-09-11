@@ -72,5 +72,4 @@ export default {
     { id: "gpt-5.4", name: "GPT 5.4" },
     { id: "gpt-5.2", name: "GPT 5.2" },
   ],
-  features: { usage: true },
 };

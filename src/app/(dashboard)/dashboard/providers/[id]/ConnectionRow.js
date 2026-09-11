@@ -7,7 +7,7 @@ import { Badge, Toggle, Tooltip } from "@/shared/components";
 import CooldownTimer from "./CooldownTimer";
 import CircuitBreakerBadge from "../components/CircuitBreakerBadge";
 
-export default function ConnectionRow({ connection, affectedCombos = [], proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null, onCatalogSynced = null, onImportFreeModels = null, importingFreeModels = false }) {
+export default function ConnectionRow({ connection, affectedCombos = [], proxyPools, isOAuth, isFirst, isLast, onMoveUp, onMoveDown, onToggleActive, onUpdateProxy, onEdit, onDelete, oneByOneStatus = null, autoPing = null, circuitBreaker = null, onResetCircuit = null, onCatalogSynced = null, canSyncCatalog = false }) {
   const [showProxyDropdown, setShowProxyDropdown] = useState(false);
   const [showFullError, setShowFullError] = useState(false);
   const [updatingProxy, setUpdatingProxy] = useState(false);
@@ -171,20 +171,21 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
     return catalogModels.filter((m) => m.availability !== "unavailable" && m.tier === tierFilter);
   })();
   const syncModels = async () => {
+    if (!canSyncCatalog) return;
     setSyncingModels(true);
     setCatalogMessage("");
     try {
       const response = await fetch(`/api/providers/${connection.id}/model-catalog`, { method: "POST" });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (data.skipped) setCatalogMessage("This provider does not publish a model list.");
       else if (data.error) setCatalogMessage(data.error);
       else {
-        setCatalogMessage(`Model list updated — ${data.available ?? 0} model${(data.available ?? 0) === 1 ? "" : "s"}.`);
-        // Refresh parent connection list so tier badges / counts update without remount.
-        if (typeof onCatalogSynced === "function") await onCatalogSynced();
+        const available = data.available ?? data.counts?.available ?? 0;
+        setCatalogMessage(`Catalog updated — ${available} model${available === 1 ? "" : "s"} discovered. Use Import models to add them to Available Models.`);
+        if (typeof onCatalogSynced === "function") await onCatalogSynced(data.catalog || null);
       }
     } catch {
-      setCatalogMessage("Could not update the model list.");
+      setCatalogMessage("Could not update the model catalog.");
     } finally {
       setSyncingModels(false);
     }
@@ -295,20 +296,6 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
               {creditsCount > 0 && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-300" title="Models billed per request (e.g. image), not token-priced">{creditsCount} per-req</span>}
               {paidCount > 0 && <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[11px] text-sky-700 dark:text-sky-300">{paidCount} paid</span>}
               {unknownCount > 0 && <span className="rounded bg-zinc-500/10 px-1.5 py-0.5 text-[11px] text-text-muted">{unknownCount} unknown price</span>}
-              {freeCount > 0 && typeof onImportFreeModels === "function" && (
-                <button
-                  type="button"
-                  onClick={onImportFreeModels}
-                  disabled={importingFreeModels}
-                  className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300"
-                  title={`Add the ${freeCount} free model${freeCount === 1 ? "" : "s"} from this catalog to Available Models`}
-                >
-                  <span className={`material-symbols-outlined text-[13px]${importingFreeModels ? " animate-spin" : ""}`}>
-                    {importingFreeModels ? "progress_activity" : "download"}
-                  </span>
-                  {importingFreeModels ? "Importing…" : "Import free"}
-                </button>
-              )}
             </div>
           )}
           {catalog && unavailableModels.length > 0 && (
@@ -346,19 +333,6 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
                         {label}
                       </button>
                     ))}
-                    {freeCount > 0 && typeof onImportFreeModels === "function" && (
-                      <button
-                        type="button"
-                        onClick={onImportFreeModels}
-                        disabled={importingFreeModels}
-                        className="ml-auto inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-500/25 disabled:opacity-50 dark:text-emerald-300"
-                      >
-                        <span className={`material-symbols-outlined text-[13px]${importingFreeModels ? " animate-spin" : ""}`}>
-                          {importingFreeModels ? "progress_activity" : "download"}
-                        </span>
-                        {importingFreeModels ? "Importing…" : `Import ${freeCount} free`}
-                      </button>
-                    )}
                   </div>
                   {curatedHasWarning && (
                     <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -449,16 +423,18 @@ export default function ConnectionRow({ connection, affectedCombos = [], proxyPo
               </button>
             </Tooltip>
           )}
-          <button
-            type="button"
-            onClick={syncModels}
-            disabled={syncingModels}
-            className="flex w-full flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/5"
-            title="Update this account's model list"
-          >
-            <span className={`material-symbols-outlined text-[18px]${syncingModels ? " animate-spin" : ""}`}>{syncingModels ? "progress_activity" : "sync"}</span>
-            <span className="text-[10px] leading-tight">Models</span>
-          </button>
+          {canSyncCatalog && (
+            <button
+              type="button"
+              onClick={syncModels}
+              disabled={syncingModels}
+              className="flex w-full flex-col items-center rounded px-2 py-1 text-text-muted transition-colors hover:bg-black/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/5"
+              title="Refresh this account's discovered catalog. Does not add models to Available Models — use Import models there."
+            >
+              <span className={`material-symbols-outlined text-[18px]${syncingModels ? " animate-spin" : ""}`}>{syncingModels ? "progress_activity" : "sync"}</span>
+              <span className="text-[10px] leading-tight">Sync</span>
+            </button>
+          )}
           <button onClick={onEdit} className="flex flex-col items-center rounded px-2 py-1 text-text-muted hover:bg-black/5 hover:text-primary dark:hover:bg-white/5">
             <span className="material-symbols-outlined text-[18px]">edit</span>
             <span className="text-[10px] leading-tight">Edit</span>
@@ -508,8 +484,7 @@ ConnectionRow.propTypes = {
   onToggleActive: PropTypes.func.isRequired,
   onUpdateProxy: PropTypes.func,
   onCatalogSynced: PropTypes.func,
-  onImportFreeModels: PropTypes.func,
-  importingFreeModels: PropTypes.bool,
+  canSyncCatalog: PropTypes.bool,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   oneByOneStatus: PropTypes.shape({
