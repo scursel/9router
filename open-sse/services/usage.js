@@ -71,7 +71,7 @@ const USAGE_HANDLERS = {
   "xiaomi-mimo": (c) => getXiaomiMimoUsage(c.providerSpecificData, c.proxyOptions),
   clinepass: (c) => getClinePassUsage(c.apiKey || c.accessToken, c.proxyOptions),
   // Official alitp-intl ships connection and transport but no usage API, so the
-  // 5h/7d windows are metered locally from usageHistory.
+  // weekly window (no more 5h quota) is metered locally from usageHistory.
   "alitp-intl": (c) => getAlibabaTokenPlanUsage(c),
   "qwen-cloud-token-plan": (c) => getAlibabaTokenPlanUsage(c),
 };

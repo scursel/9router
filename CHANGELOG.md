@@ -36,6 +36,7 @@
 - **Dashboard**: provider page shows last-24h requests / spent / tokens; clarify model pricing chips (`per-req`, not account balance); refresh catalog UI after manual sync
 - **Chat/Search/Fetch**: combo expansion skips catalog-unavailable members on all three paths
 - **Usage**: prefer official OpenCode Go quota collector (drop custom `opencodeGo.js` duplicate after upstream landed it)
+- **Usage**: Alibaba Token Plan meters the 7-day quota only — the plan no longer offers a 5-hour window — and a vendor `insufficient_quota` 429 now overrides the local token estimate, so an exhausted week reads 2500/2500 with its reset instant instead of ~22% used
 
 # v0.5.65 (2026-09-03)
 

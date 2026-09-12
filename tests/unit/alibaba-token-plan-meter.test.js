@@ -6,6 +6,9 @@ import {
   estimateAlibabaCredits,
   alibabaWindowMeta,
   alibabaUntracked7d,
+  parseAlibabaResetAt,
+  alibabaQuotaExhaustion,
+  applyAlibabaQuotaExhaustion,
 } from "open-sse/services/usage/alibabaTokenPlan.js";
 import { getAdapter } from "@/lib/db/driver.js";
 
@@ -20,22 +23,20 @@ describe("Alibaba Token Plan Local Usage Meter", () => {
 
   describe("getAlibabaPlanLimits", () => {
     it("returns Lite tier limits by default or for unknown plans", () => {
-      expect(getAlibabaPlanLimits()).toEqual({ name: "Lite", limit5h: 700, limit7d: 2500 });
-      expect(getAlibabaPlanLimits({ plan: "unknown" })).toEqual({ name: "Lite", limit5h: 700, limit7d: 2500 });
+      expect(getAlibabaPlanLimits()).toEqual({ name: "Lite", limit7d: 2500 });
+      expect(getAlibabaPlanLimits({ plan: "unknown" })).toEqual({ name: "Lite", limit7d: 2500 });
     });
 
     it("returns Standard tier limits for standard plan", () => {
-      expect(getAlibabaPlanLimits({ tokenPlan: "Standard" })).toEqual({
+      expect(getAlibabaPlanLimits({ plan: "Standard" })).toEqual({
         name: "Standard",
-        limit5h: 3000,
         limit7d: 10000,
       });
     });
 
     it("returns Pro tier limits for pro plan", () => {
-      expect(getAlibabaPlanLimits({ tier: "pro" })).toEqual({
+      expect(getAlibabaPlanLimits({ plan: "Pro" })).toEqual({
         name: "Pro",
-        limit5h: 12000,
         limit7d: 40000,
       });
     });
@@ -132,11 +133,13 @@ describe("Alibaba Token Plan Local Usage Meter", () => {
       expect(result.status).toBe("ok");
       expect(result.source).toBe("router-local");
       expect(result.fetchedAt).toBe(new Date(now).toISOString());
-      expect(result.quotas["Créditos 5h (estimado)"]).toBeDefined();
       expect(result.quotas["Créditos 7d (estimado)"]).toBeDefined();
-      expect(result.quotas["Créditos 5h (estimado)"].used).toBe(1000);
-      expect(result.quotas["Créditos 5h (estimado)"].total).toBe(700);
+      expect(result.quotas["Créditos 7d (estimado)"].used).toBe(1000);
       expect(result.quotas["Créditos 7d (estimado)"].total).toBe(2500);
+      expect(result.quotas["Créditos 7d (estimado)"].resetAt).toBe(
+        new Date(now - 1000 + 7 * 86400 * 1000).toISOString()
+      );
+      expect(result.quotas["Créditos 5h (estimado)"]).toBeUndefined();
     });
 
     it("produces raw token quota names when unit is not credits", () => {
@@ -147,9 +150,9 @@ describe("Alibaba Token Plan Local Usage Meter", () => {
       const result = calcSlidingWindowUsage(records, now, { unit: "tokens" });
 
       expect(result.plan).toBe("Alibaba Token Plan (medido pelo router)");
-      expect(result.quotas["Consumo 5h (medido local)"]).toBeDefined();
       expect(result.quotas["Consumo 7d (medido local)"]).toBeDefined();
-      expect(result.quotas["Consumo 5h (medido local)"].used).toBe(1000);
+      expect(result.quotas["Consumo 7d (medido local)"].used).toBe(1000);
+      expect(result.quotas["Consumo 5h (medido local)"]).toBeUndefined();
     });
   });
 
@@ -175,7 +178,7 @@ describe("Alibaba Token Plan Local Usage Meter", () => {
         ["conn-abc-123", expect.any(String)]
       );
       expect(result.plan).toBe("Alibaba Token Plan Standard (créditos estimados)");
-      expect(result.quotas["Créditos 5h (estimado)"].used).toBe(1000);
+      expect(result.quotas["Créditos 7d (estimado)"].used).toBe(1000);
     });
 
     it("resolves connectionId from apiKey via providerConnections when connectionId is missing", async () => {
@@ -213,7 +216,89 @@ describe("Alibaba Token Plan Local Usage Meter", () => {
 
       expect(result.status).toBe("ok");
       expect(result.source).toBe("router-local");
-      expect(result.quotas["Créditos 5h (estimado)"].used).toBe(0);
+      expect(result.quotas["Créditos 7d (estimado)"].used).toBe(0);
+    });
+  });
+
+  describe("vendor 429 exhaustion (authoritative over the local estimate)", () => {
+    const EXHAUSTED =
+      '[429]: {"error":{"message":"Your token-plan 1-week quota has been exhausted. The quota will reset at 09-18 16:04:00 UTC.","type":"insufficient_quota"}}';
+
+    it("parses the reset instant the vendor prints without a year", () => {
+      const now = Date.parse("2026-09-12T13:26:00Z");
+      expect(parseAlibabaResetAt(EXHAUSTED, now)).toBe("2026-09-18T16:04:00.000Z");
+    });
+
+    it("rolls the reset to the next year when the printed date is behind us", () => {
+      const now = Date.parse("2026-12-30T00:00:00Z");
+      expect(parseAlibabaResetAt(EXHAUSTED, now)).toBe("2027-09-18T16:04:00.000Z");
+    });
+
+    it("ignores errors that are not a quota exhaustion, or are stale", () => {
+      const now = Date.parse("2026-09-12T13:26:00Z");
+      expect(alibabaQuotaExhaustion("[500]: upstream exploded", now, now)).toBeNull();
+      expect(alibabaQuotaExhaustion(EXHAUSTED, "2026-09-01T00:00:00Z", now)).toBeNull();
+      expect(alibabaQuotaExhaustion(EXHAUSTED, "2026-09-12T13:22:00Z", now)).toEqual({
+        at: Date.parse("2026-09-12T13:22:00Z"),
+        resetAt: "2026-09-18T16:04:00.000Z",
+      });
+    });
+
+    it("fills the weekly quota to the ceiling with the vendor resetAt", () => {
+      const now = Date.parse("2026-09-12T13:26:00Z");
+      const result = calcSlidingWindowUsage([], now, { plan: "Lite", unit: "credits" });
+      applyAlibabaQuotaExhaustion(
+        result,
+        { lastError: EXHAUSTED, lastErrorAt: "2026-09-12T13:22:00Z" },
+        [],
+        now,
+      );
+
+      const quota = result.quotas["Créditos 7d (estimado)"];
+      expect(quota.used).toBe(2500);
+      expect(quota.total).toBe(2500);
+      expect(quota.remainingPercentage).toBe(0);
+      expect(quota.resetAt).toBe("2026-09-18T16:04:00.000Z");
+    });
+
+    it("stops reporting exhaustion once a call succeeds after the 429", () => {
+      const now = Date.parse("2026-09-12T13:26:00Z");
+      const result = calcSlidingWindowUsage(
+        [{ timestamp: now - 1000, promptTokens: 1000000, completionTokens: 0 }],
+        now,
+        { unit: "credits" },
+      );
+      applyAlibabaQuotaExhaustion(
+        result,
+        { lastError: EXHAUSTED, lastErrorAt: "2026-09-12T13:00:00Z" },
+        [{ timestamp: now - 1000, promptTokens: 1000000, completionTokens: 0 }],
+        now,
+      );
+
+      expect(result.quotas["Créditos 7d (estimado)"].used).toBe(1000);
+    });
+
+    it("surfaces the vendor state through getAlibabaTokenPlanUsage", async () => {
+      const now = Date.parse("2026-09-12T13:26:00Z");
+      getAdapter.mockResolvedValue({
+        all: vi.fn().mockReturnValue([
+          { promptTokens: 1000000, completionTokens: 0, timestamp: now - 7200000 },
+        ]),
+        get: vi.fn(),
+      });
+
+      const result = await getAlibabaTokenPlanUsage(
+        {
+          connectionId: "conn-alitp",
+          providerSpecificData: { plan: "Lite" },
+          lastError: EXHAUSTED,
+          lastErrorAt: "2026-09-12T13:22:00Z",
+        },
+        now,
+      );
+
+      expect(result.quotas["Créditos 7d (estimado)"].remainingPercentage).toBe(0);
+      expect(result.quotas["Créditos 7d (estimado)"].resetAt).toBe("2026-09-18T16:04:00.000Z");
     });
   });
 });
