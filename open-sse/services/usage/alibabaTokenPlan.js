@@ -2,10 +2,12 @@ import { getAdapter } from "@/lib/db/driver.js";
 import { num, localQuota } from "./quotaShared.js";
 
 export function getAlibabaPlanLimits(limits = {}) {
+  // Token Plan no longer ships a 5-hour window — quota is weekly only
+  // (measured in credits). Lite = 2500 credits / 7d.
   const plans = {
-    lite: { name: "Lite", limit5h: 700, limit7d: 2500 },
-    standard: { name: "Standard", limit5h: 3000, limit7d: 10000 },
-    pro: { name: "Pro", limit5h: 12000, limit7d: 40000 },
+    lite: { name: "Lite", limit7d: 2500 },
+    standard: { name: "Standard", limit7d: 10000 },
+    pro: { name: "Pro", limit7d: 40000 },
   };
   const key = String(limits.plan || limits.tier || limits.tokenPlan || "lite")
     .toLowerCase()
@@ -85,65 +87,39 @@ export function alibabaUntracked7d(limits, windowStart) {
 }
 
 export function calcSlidingWindowUsage(records, now = Date.now(), limits = {}) {
-  const fiveHourMs = 5 * 3600 * 1000;
   const sevenDayMs = 7 * 86400 * 1000;
-  const cutoff5h = now - fiveHourMs;
   const cutoff7d = now - sevenDayMs;
   const useCredits = String(limits?.unit || "").toLowerCase() === "credits";
   const plan = getAlibabaPlanLimits(limits);
-  const fiveHourUsed = useCredits
-    ? alibabaWindowUsage(records, fiveHourMs, now, true)
-    : (() => {
-        let used = 0;
-        if (Array.isArray(records)) {
-          for (const r of records) {
-            const t =
-              typeof r?.timestamp === "number"
-                ? r.timestamp
-                : r?.timestamp
-                  ? new Date(r.timestamp).getTime()
-                  : NaN;
-            if (!Number.isFinite(t) || t < cutoff5h || t > now) continue;
-            used += num(r?.promptTokens, 0) + num(r?.completionTokens, 0);
-          }
-        }
-        return used;
-      })();
-  const sevenDayMeta = useCredits
-    ? alibabaWindowMeta(records, sevenDayMs, now, true)
-    : null;
-  const sevenDayUsed = sevenDayMeta
-    ? sevenDayMeta.used + alibabaUntracked7d(limits, sevenDayMeta.start)
-    : (() => {
-        let used = 0;
-        if (Array.isArray(records)) {
-          for (const r of records) {
-            const t =
-              typeof r?.timestamp === "number"
-                ? r.timestamp
-                : r?.timestamp
-                  ? new Date(r.timestamp).getTime()
-                  : NaN;
-            if (!Number.isFinite(t) || t < cutoff7d || t > now) continue;
-            used += num(r?.promptTokens, 0) + num(r?.completionTokens, 0);
-          }
-        }
-        return used;
-      })();
 
-  const limit5h = num(
-    limits?.limit5h || limits?.quotaLimit5h || limits?.fiveHourLimit,
-    useCredits ? plan.limit5h : 0,
-  );
+  let sevenDayUsed = 0;
+  let sevenDayEnd = null;
+  if (useCredits) {
+    const meta = alibabaWindowMeta(records, sevenDayMs, now, true);
+    sevenDayUsed = meta.used + alibabaUntracked7d(limits, meta.start);
+    sevenDayEnd = meta.end;
+  } else if (Array.isArray(records)) {
+    for (const r of records) {
+      const t =
+        typeof r?.timestamp === "number"
+          ? r.timestamp
+          : r?.timestamp
+            ? new Date(r.timestamp).getTime()
+            : NaN;
+      if (!Number.isFinite(t) || t < cutoff7d || t > now) continue;
+      sevenDayUsed += num(r?.promptTokens, 0) + num(r?.completionTokens, 0);
+    }
+  }
+
   const limit7d = num(
     limits?.limit7d || limits?.quotaLimit7d || limits?.sevenDayLimit,
     useCredits ? plan.limit7d : 0,
   );
-  const name5h = useCredits ? "Créditos 5h (estimado)" : "Consumo 5h (medido local)";
   const name7d = useCredits ? "Créditos 7d (estimado)" : "Consumo 7d (medido local)";
+  const quota7d = localQuota(sevenDayUsed, limit7d);
+  if (sevenDayEnd) quota7d.resetAt = new Date(sevenDayEnd).toISOString();
   const quotas = {
-    [name5h]: localQuota(fiveHourUsed, limit5h),
-    [name7d]: localQuota(sevenDayUsed, limit7d),
+    [name7d]: quota7d,
   };
 
   return {
@@ -155,6 +131,71 @@ export function calcSlidingWindowUsage(records, now = Date.now(), limits = {}) {
     fetchedAt: new Date(now).toISOString(),
     quotas,
   };
+}
+
+// The plan's credit coefficients are not published (the console says credits
+// "are dynamically determined by model type, token usage, thinking mode and
+// tool calls"), so the local estimate can land far below the real drawdown —
+// e.g. a plan the vendor already paused read 22% used here. A fresh vendor 429
+// is therefore authoritative: it proves the 7-day window is exhausted and
+// carries the reset instant.
+const QUOTA_EXHAUSTED_RE = /token-plan[^"]*quota has been exhausted/i;
+const QUOTA_RESET_RE = /reset at (\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) UTC/i;
+
+export function parseAlibabaResetAt(message, now = Date.now()) {
+  const m = QUOTA_RESET_RE.exec(String(message || ""));
+  if (!m) return null;
+  const [, mm, dd, hh, mi, ss] = m;
+  const year = new Date(now).getUTCFullYear();
+  const build = (y) => Date.UTC(y, Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss));
+  // The vendor prints no year: a reset that is already behind us belongs to the
+  // next one.
+  return new Date(build(year) > now - 86400000 ? build(year) : build(year + 1)).toISOString();
+}
+
+export function alibabaQuotaExhaustion(lastError, lastErrorAt, now = Date.now()) {
+  const message = String(lastError || "");
+  if (!QUOTA_EXHAUSTED_RE.test(message)) return null;
+  const at =
+    typeof lastErrorAt === "number"
+      ? lastErrorAt
+      : lastErrorAt
+        ? new Date(lastErrorAt).getTime()
+        : NaN;
+  if (!Number.isFinite(at) || at > now) return null;
+  if (now - at > 7 * 86400 * 1000) return null;
+  return { at, resetAt: parseAlibabaResetAt(message, now) };
+}
+
+export function applyAlibabaQuotaExhaustion(result, ctx = {}, records = [], now = Date.now()) {
+  const signal = alibabaQuotaExhaustion(ctx?.lastError, ctx?.lastErrorAt, now);
+  if (!signal) return result;
+  // A call that succeeded after the 429 means the account was restored (plan
+  // upgrade, Extra Bundle, vendor quota reset) — stop reporting it exhausted.
+  if (
+    Array.isArray(records) &&
+    records.some((r) => {
+      const t =
+        typeof r?.timestamp === "number"
+          ? r.timestamp
+          : r?.timestamp
+            ? new Date(r.timestamp).getTime()
+            : NaN;
+      return (
+        Number.isFinite(t) &&
+        t > signal.at &&
+        num(r?.promptTokens, 0) + num(r?.completionTokens, 0) > 0
+      );
+    })
+  ) {
+    return result;
+  }
+  const quota = result?.quotas?.[Object.keys(result.quotas)[0]];
+  if (!quota || !(quota.total > 0)) return result;
+  quota.used = quota.total;
+  quota.remainingPercentage = 0;
+  if (signal.resetAt) quota.resetAt = signal.resetAt;
+  return result;
 }
 
 export async function getAlibabaTokenPlanUsage(ctx = {}, now = Date.now()) {
@@ -183,8 +224,9 @@ export async function getAlibabaTokenPlanUsage(ctx = {}, now = Date.now()) {
     console.warn("[LocalQuotaMeter] DB query error:", err);
   }
 
-  return calcSlidingWindowUsage(rows, now, {
+  const result = calcSlidingWindowUsage(rows, now, {
     ...psd,
     unit: psd.unit || psd.quotaUnit || "credits",
   });
+  return applyAlibabaQuotaExhaustion(result, ctx, rows, now);
 }
