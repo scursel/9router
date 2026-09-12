@@ -198,7 +198,7 @@ describe("Alibaba Token Plan Local Usage Meter", () => {
       const result = await getAlibabaTokenPlanUsage(ctx, now);
 
       expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining("SELECT id FROM providerConnections"),
+        expect.stringContaining("FROM providerConnections"),
         ["sk-alitp-secret-key"]
       );
       expect(mockAll).toHaveBeenCalledWith(
@@ -206,6 +206,37 @@ describe("Alibaba Token Plan Local Usage Meter", () => {
         ["resolved-conn-456", expect.any(String)]
       );
       expect(result.plan).toBe("Alibaba Token Plan Pro (créditos estimados)");
+    });
+
+    it("reads lastError from the connection row, not the narrowed dispatcher ctx", async () => {
+      const now = Date.parse("2026-09-12T13:26:00Z");
+      const row = {
+        data: JSON.stringify({
+          lastError:
+            '[429]: {"error":{"message":"Your token-plan 1-week quota has been exhausted. The quota will reset at 09-18 16:04:00 UTC."}}',
+          lastErrorAt: "2026-09-12T13:22:00Z",
+        }),
+      };
+      const mockGet = vi.fn().mockReturnValue(row);
+      getAdapter.mockResolvedValue({
+        get: mockGet,
+        all: vi.fn().mockReturnValue([
+          { promptTokens: 1000000, completionTokens: 0, timestamp: now - 7200000 },
+        ]),
+      });
+
+      // getUsageForProvider builds this ctx: connectionId only, no error fields.
+      const result = await getAlibabaTokenPlanUsage(
+        { connectionId: "conn-alitp", providerSpecificData: { plan: "Lite" } },
+        now,
+      );
+
+      expect(mockGet).toHaveBeenCalledWith(
+        expect.stringContaining("SELECT data FROM providerConnections WHERE id = ?"),
+        ["conn-alitp"],
+      );
+      expect(result.quotas["Créditos 7d (estimado)"].used).toBe(2500);
+      expect(result.quotas["Créditos 7d (estimado)"].resetAt).toBe("2026-09-18T16:04:00.000Z");
     });
 
     it("handles DB errors gracefully and returns valid result with zero usage", async () => {

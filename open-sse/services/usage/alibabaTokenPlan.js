@@ -198,6 +198,16 @@ export function applyAlibabaQuotaExhaustion(result, ctx = {}, records = [], now 
   return result;
 }
 
+function parseConnectionData(raw) {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getAlibabaTokenPlanUsage(ctx = {}, now = Date.now()) {
   let connId = String(ctx?.connectionId || ctx?.id || "").trim();
   const psd = ctx?.providerSpecificData || {};
@@ -205,14 +215,22 @@ export async function getAlibabaTokenPlanUsage(ctx = {}, now = Date.now()) {
   const cutoff7dIso = new Date(now - sevenDayMs).toISOString();
 
   let rows = [];
+  let connData = null;
   try {
     const db = await getAdapter();
-    if (db && !connId && ctx?.apiKey && typeof db.get === "function") {
-      const found = db.get(
-        "SELECT id FROM providerConnections WHERE provider IN ('alitp-intl', 'qwen-cloud-token-plan') AND json_extract(data, '$.apiKey') = ?",
-        [String(ctx.apiKey)]
-      );
-      connId = String(found?.id || "").trim();
+    if (db && typeof db.get === "function") {
+      // The dispatcher hands handlers a narrowed ctx, so read the vendor error
+      // (lastError/lastErrorAt) straight from the connection row.
+      const connRow = connId
+        ? db.get("SELECT data FROM providerConnections WHERE id = ?", [connId])
+        : ctx?.apiKey
+          ? db.get(
+              "SELECT id, data FROM providerConnections WHERE provider IN ('alitp-intl', 'qwen-cloud-token-plan') AND json_extract(data, '$.apiKey') = ?",
+              [String(ctx.apiKey)]
+            )
+          : null;
+      connId = String(connRow?.id || connId).trim();
+      connData = parseConnectionData(connRow?.data);
     }
     if (db && typeof db.all === "function" && connId) {
       rows = db.all(
@@ -228,5 +246,13 @@ export async function getAlibabaTokenPlanUsage(ctx = {}, now = Date.now()) {
     ...psd,
     unit: psd.unit || psd.quotaUnit || "credits",
   });
-  return applyAlibabaQuotaExhaustion(result, ctx, rows, now);
+  return applyAlibabaQuotaExhaustion(
+    result,
+    {
+      lastError: ctx?.lastError ?? connData?.lastError,
+      lastErrorAt: ctx?.lastErrorAt ?? connData?.lastErrorAt,
+    },
+    rows,
+    now,
+  );
 }
