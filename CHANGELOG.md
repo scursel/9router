@@ -31,6 +31,7 @@
 - **Combos**: passthrough providers (Cline) keep unlisted combo members; only drop ids the catalog marked unavailable
 - **Cline**: `modelsFetcher` for import/sync without stripping remapped `cl/...` members after the first catalog sync
 - **Usage**: Alibaba Token Plan meters the 7-day quota only — the plan no longer offers a 5-hour window — and a vendor `insufficient_quota` 429 now overrides the local token estimate, so an exhausted week reads 2500/2500 with its reset instant instead of ~22% used
+- **Build**: `cli:pack` refuses to pack a version older than the package installed on the machine (cutover guard, `ALLOW_DOWNGRADE=1` to override) and flags tarballs that are tracked release artifacts; `npm run cutover:verify` checks the live service after install
 
 # v0.5.69 (2026-09-05)
 
