@@ -37,6 +37,7 @@
 - **Chat/Search/Fetch**: combo expansion skips catalog-unavailable members on all three paths
 - **Usage**: prefer official OpenCode Go quota collector (drop custom `opencodeGo.js` duplicate after upstream landed it)
 - **Usage**: Alibaba Token Plan meters the 7-day quota only — the plan no longer offers a 5-hour window — and a vendor `insufficient_quota` 429 now overrides the local token estimate, so an exhausted week reads 2500/2500 with its reset instant instead of ~22% used
+- **Build**: `cli:pack` refuses to pack a version older than the package installed on the machine (cutover guard, `ALLOW_DOWNGRADE=1` to override) and flags tarballs that are tracked release artifacts; `npm run cutover:verify` checks the live service after install
 
 # v0.5.65 (2026-09-03)
 
